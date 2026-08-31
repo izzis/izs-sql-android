@@ -390,6 +390,7 @@ class BrowserViewModel @Inject constructor(
         _expandedTables.value = emptySet()
         _selectedTable.value = null
         _selectedDatabase.value = null
+        _activePanel.value = BrowserPanel.TABLE_INFO
         _loadingDatabases.value = emptySet()
         _isLoading.value = false
         _isRefreshingTables.value = false

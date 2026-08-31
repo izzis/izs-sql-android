@@ -126,12 +126,15 @@ fun DatabaseBrowserScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    BackHandler(enabled = selectedDatabase != null) {
-        viewModel.clearSelectedDatabase()
+    val canGoBack = selectedDatabase != null || activePanel != BrowserPanel.TABLE_INFO
+    val onBrowserBack: () -> Unit = {
+        if (selectedDatabase != null) viewModel.clearSelectedDatabase()
+        else if (activePanel != BrowserPanel.TABLE_INFO) viewModel.setActivePanel(BrowserPanel.TABLE_INFO)
     }
-    BackHandler(enabled = activePanel != BrowserPanel.TABLE_INFO && selectedDatabase == null) {
-        viewModel.setActivePanel(BrowserPanel.TABLE_INFO)
-    }
+    // Drawer has its own back handling — only handle browser back when drawer is closed
+    BackHandler(enabled = canGoBack && !drawerState.isOpen) { onBrowserBack() }
+    // At browser root, consume system back so it doesn't pop to "connections" without explicit Disconnect
+    BackHandler(enabled = !canGoBack && !drawerState.isOpen) { }
 
     // Manual refresh only: first open if cache empty, otherwise use cache (back preserves cache)
     LaunchedEffect(hasLoadedDatabases) {
@@ -207,6 +210,7 @@ fun DatabaseBrowserScreen(
                     subtitle = "${profile.host}:${profile.port}" + if (!profile.database.isNullOrBlank()) " • DB: ${profile.database}" else "",
                     containerColor = topBarColor,
                     onMenu = { scope.launch { drawerState.open() } },
+                    onBack = if (canGoBack) onBrowserBack else null,
                     onRefresh = onTopBarRefresh,
                     isRefreshing = isTopBarRefreshing,
                     isLocked = isLocked,
