@@ -33,7 +33,7 @@ class MariaDbConnectionManager @Inject constructor(
         }
     }
 
-    suspend fun connect(profile: ConnectionProfileEntity): ConnectionResult = withContext(Dispatchers.IO) {
+    suspend fun connect(profile: ConnectionProfileEntity, onStatus: ((String) -> Unit)? = null): ConnectionResult = withContext(Dispatchers.IO) {
         var actualHost = profile.host
         var actualPort = profile.port
 
@@ -54,6 +54,8 @@ class MariaDbConnectionManager @Inject constructor(
                 actualHost = "127.0.0.1"
                 actualPort = tunnel.localPort
             }
+
+            onStatus?.invoke("Connecting to database...")
 
             val password = credentialStore.getPassword(profile.id)
                 ?: return@withContext ConnectionResult.Error("Password not found. Save the connection first.")

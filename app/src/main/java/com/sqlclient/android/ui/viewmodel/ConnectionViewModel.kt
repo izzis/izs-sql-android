@@ -45,6 +45,12 @@ class ConnectionViewModel @Inject constructor(
     private val _isReconnecting = MutableStateFlow(false)
     val isReconnecting: StateFlow<Boolean> = _isReconnecting.asStateFlow()
 
+    private val _connectingProfileId = MutableStateFlow<Long?>(null)
+    val connectingProfileId: StateFlow<Long?> = _connectingProfileId.asStateFlow()
+
+    private val _connectionMessage = MutableStateFlow("")
+    val connectionMessage: StateFlow<String> = _connectionMessage.asStateFlow()
+
     fun setSessionLocked(locked: Boolean) {
         _sessionLocked.value = locked
     }
@@ -126,13 +132,20 @@ class ConnectionViewModel @Inject constructor(
 
     fun connect(profile: ConnectionProfileEntity) {
         viewModelScope.launch {
+            _connectingProfileId.value = profile.id
+            _connectionMessage.value = if (profile.useSshTunnel) "Opening SSH tunnel..." else "Connecting to database..."
             _connectionState.value = ConnectionState.Connecting
-            when (val result = connectionRepository.connect(profile)) {
+            when (val result = connectionRepository.connect(profile) { msg ->
+                _connectionMessage.value = msg
+            }) {
                 is ConnectionResult.Success -> {
+                    _connectionMessage.value = "Connected!"
                     _connectionState.value = ConnectionState.Connected(profile)
                     _sessionLocked.value = profile.isReadonly
                 }
                 is ConnectionResult.Error -> {
+                    _connectionMessage.value = ""
+                    _connectingProfileId.value = null
                     _connectionState.value = ConnectionState.Error(result.message)
                 }
             }
@@ -175,6 +188,13 @@ class ConnectionViewModel @Inject constructor(
         if (_connectionState.value is ConnectionState.Error) {
             _connectionState.value = ConnectionState.Disconnected
         }
+        _connectingProfileId.value = null
+        _connectionMessage.value = ""
+    }
+
+    fun clearConnectingState() {
+        _connectingProfileId.value = null
+        _connectionMessage.value = ""
     }
 
     fun hasStoredPassword(profileId: Long): Boolean {

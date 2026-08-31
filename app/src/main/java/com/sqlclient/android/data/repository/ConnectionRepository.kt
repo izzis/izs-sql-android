@@ -96,11 +96,11 @@ class ConnectionRepository @Inject constructor(
         return result
     }
 
-    suspend fun connect(profile: ConnectionProfileEntity): ConnectionResult {
+    suspend fun connect(profile: ConnectionProfileEntity, onStatus: ((String) -> Unit)? = null): ConnectionResult {
         // If no password stored yet, error
         val password = credentialStore.getPassword(profile.id)
             ?: return ConnectionResult.Error("Password not found. Please save the connection first.")
-        return connectionManager.connect(profile)
+        return connectionManager.connect(profile, onStatus)
     }
 
     fun disconnect() {

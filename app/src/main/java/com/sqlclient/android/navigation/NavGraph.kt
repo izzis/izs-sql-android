@@ -44,19 +44,6 @@ fun NavGraph(themeManager: ThemeManager) {
         startDestination = "connections"
     ) {
         composable("connections") {
-            val connectionState by connectionViewModel.connectionState.collectAsState()
-
-            LaunchedEffect(connectionState) {
-                when (connectionState) {
-                    is com.sqlclient.android.ui.viewmodel.ConnectionState.Connected -> {
-                        navController.navigate("browser") {
-                            popUpTo("connections")
-                        }
-                    }
-                    else -> {}
-                }
-            }
-
             ConnectionListScreen(
                 viewModel = connectionViewModel,
                 themeManager = themeManager,
@@ -70,6 +57,11 @@ fun NavGraph(themeManager: ThemeManager) {
                 },
                 onConnect = { profile ->
                     connectionViewModel.connect(profile)
+                },
+                onNavigateToBrowser = {
+                    navController.navigate("browser") {
+                        popUpTo("connections")
+                    }
                 }
             )
         }

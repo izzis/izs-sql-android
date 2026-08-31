@@ -59,7 +59,8 @@ fun ConnectionListScreen(
     themeManager: ThemeManager,
     onAddConnection: () -> Unit,
     onEditConnection: (Long) -> Unit,
-    onConnect: (ConnectionProfileEntity) -> Unit
+    onConnect: (ConnectionProfileEntity) -> Unit,
+    onNavigateToBrowser: () -> Unit = {}
 ) {
     val profiles by viewModel.profiles.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -68,13 +69,25 @@ fun ConnectionListScreen(
     val isDarkMode by themeManager.isDarkMode.collectAsState()
     val followSystem by themeManager.followSystem.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val connectingProfileId by viewModel.connectingProfileId.collectAsState()
+    val connectionMessage by viewModel.connectionMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    LaunchedEffect(Unit) {
+        viewModel.clearConnectingState()
+    }
+
     LaunchedEffect(connectionState) {
-        val error = (connectionState as? com.sqlclient.android.ui.viewmodel.ConnectionState.Error)?.message
-        if (error != null) {
-            snackbarHostState.showSnackbar(error)
-            viewModel.clearConnectionError()
+        when (connectionState) {
+            is com.sqlclient.android.ui.viewmodel.ConnectionState.Connected -> {
+                onNavigateToBrowser()
+            }
+            is com.sqlclient.android.ui.viewmodel.ConnectionState.Error -> {
+                val error = (connectionState as com.sqlclient.android.ui.viewmodel.ConnectionState.Error).message
+                snackbarHostState.showSnackbar(error)
+                viewModel.clearConnectionError()
+            }
+            else -> {}
         }
     }
 
@@ -187,7 +200,9 @@ fun ConnectionListScreen(
                         profile = profile,
                         onClick = { onConnect(profile) },
                         onEdit = { onEditConnection(profile.id) },
-                        onDelete = { showDeleteDialog = profile }
+                        onDelete = { showDeleteDialog = profile },
+                        isConnecting = connectingProfileId == profile.id,
+                        statusMessage = if (connectingProfileId == profile.id) connectionMessage else ""
                     )
                 }
             }
