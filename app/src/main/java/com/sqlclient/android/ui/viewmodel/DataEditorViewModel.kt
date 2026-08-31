@@ -74,6 +74,13 @@ class DataEditorViewModel @Inject constructor(
     private val _lastQueryDurationMs = MutableStateFlow<Long?>(null)
     val lastQueryDurationMs: StateFlow<Long?> = _lastQueryDurationMs.asStateFlow()
 
+    // ORDER BY state
+    private val _sortColumn = MutableStateFlow<Int?>(null)
+    val sortColumn: StateFlow<Int?> = _sortColumn.asStateFlow()
+
+    private val _sortAsc = MutableStateFlow(true)
+    val sortAsc: StateFlow<Boolean> = _sortAsc.asStateFlow()
+
     // --- Batched staging: OK -> red highlight -> Save -> Confirm -> Execute ---
     // wherePairs is the WHERE clause to identify the row (PKs if available, else full row)
     data class StagedEdit(
@@ -115,6 +122,28 @@ class DataEditorViewModel @Inject constructor(
             val edit = StagedEdit(rowIndex, colIndex, columnName, newValue, wherePairs)
             _pendingEdits.value = _pendingEdits.value + ((rowIndex to colIndex) to edit)
         }
+        refreshCurrentQueryPreview()
+    }
+
+    /** Stage edit for all selected rows in the same column (multi-select batch edit) */
+    fun stageEditMultiple(colIndex: Int, columnName: String, newValue: String) {
+        val selected = _selectedRows.value
+        if (selected.isEmpty()) return
+        var edits = _pendingEdits.value
+        for (rowIndex in selected) {
+            val original = _rows.value.getOrNull(rowIndex)?.getOrNull(colIndex)?.toString() ?: ""
+            if (newValue == original) {
+                edits = edits - (rowIndex to colIndex)
+            } else {
+                val wherePairs = when {
+                    pkColumns.isNotEmpty() -> pkColumns.map { (idx, name) -> name to _rows.value.getOrNull(rowIndex)?.getOrNull(idx) }
+                    else -> _columns.value.mapIndexed { idx, col -> col.name to _rows.value.getOrNull(rowIndex)?.getOrNull(idx) }
+                }
+                if (wherePairs.isEmpty()) continue
+                edits = edits + ((rowIndex to colIndex) to StagedEdit(rowIndex, colIndex, columnName, newValue, wherePairs))
+            }
+        }
+        _pendingEdits.value = edits
         refreshCurrentQueryPreview()
     }
 
@@ -216,8 +245,56 @@ class DataEditorViewModel @Inject constructor(
 
     private fun buildBrowseSql(limit: Int = _dataLimit.value, offset: Int = 0): String {
         val whereClause = if (_activeWhere.value.isNotBlank()) " WHERE ${_activeWhere.value}" else ""
-        return if (offset > 0) "${buildBaseSql()}$whereClause LIMIT $limit OFFSET $offset"
-        else "${buildBaseSql()}$whereClause LIMIT $limit"
+        val sortClause = if (_sortColumn.value != null) {
+            val colName = _columns.value.getOrNull(_sortColumn.value!!)?.name ?: ""
+            if (colName.isNotEmpty()) " ORDER BY `$colName` ${if (_sortAsc.value) "ASC" else "DESC"}" else ""
+        } else ""
+        return if (offset > 0) "${buildBaseSql()}$whereClause${sortClause} LIMIT $limit OFFSET $offset"
+        else "${buildBaseSql()}$whereClause${sortClause} LIMIT $limit"
+    }
+
+    fun toggleSort(colIndex: Int) {
+        if (_sortColumn.value == colIndex) {
+            if (_sortAsc.value) {
+                _sortAsc.value = false
+            } else {
+                // Third tap: remove sort
+                _sortColumn.value = null
+                _sortAsc.value = true
+            }
+        } else {
+            _sortColumn.value = colIndex
+            _sortAsc.value = true
+        }
+        // Reload with new sort
+        currentOffset = 0
+        _selectedRows.value = emptySet()
+        _rows.value = emptyList()
+        val sql = buildBrowseSql()
+        _query.value = sql
+        _currentQuery.value = _currentQuery.value + sql
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            val t0 = SystemClock.elapsedRealtime()
+            try {
+                when (val result = connectionManager.executeQuery(sql)) {
+                    is QueryResult.Success -> {
+                        _columns.value = result.columns
+                        _rows.value = result.rows
+                        _hasMoreData.value = result.rows.size >= _dataLimit.value
+                        _hasLoaded.value = true
+                    }
+                    is QueryResult.Error -> _error.value = result.message
+                    else -> {}
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to load data: ${e.message}"
+            } finally {
+                _isLoading.value = false
+                _lastQueryDurationMs.value = SystemClock.elapsedRealtime() - t0
+            }
+        }
     }
 
     private fun isBrowseMode(): Boolean {
@@ -352,6 +429,8 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         _whereInput.value = ""
         _activeWhere.value = ""
+        _sortColumn.value = null
+        _sortAsc.value = true
 
         val sql = "SELECT * FROM `$database`.`$table` LIMIT ${_dataLimit.value}"
         _query.value = sql
@@ -625,6 +704,8 @@ class DataEditorViewModel @Inject constructor(
     }
 
     fun toggleRowSelection(index: Int) {
+        if (index == -1) { selectAll(); return }
+        if (index == -2) { deselectAll(); return }
         val current = _selectedRows.value.toMutableSet()
         if (current.contains(index)) current.remove(index) else current.add(index)
         _selectedRows.value = current
@@ -649,6 +730,8 @@ class DataEditorViewModel @Inject constructor(
         _whereInput.value = ""
         _activeWhere.value = ""
         _lastQueryDurationMs.value = null
+        _sortColumn.value = null
+        _sortAsc.value = true
         currentDatabase = ""
         currentTable = ""
     }

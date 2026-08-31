@@ -1,8 +1,11 @@
 package com.sqlclient.android.ui.screens.dataeditor
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +36,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +52,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,8 +67,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +105,8 @@ fun InlineDataEditorScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val whereInput by viewModel.whereInput.collectAsState()
     val queryTimeMs by viewModel.lastQueryDurationMs.collectAsState()
+    val sortColumn by viewModel.sortColumn.collectAsState()
+    val sortAsc by viewModel.sortAsc.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val isReadonly = isLocked
@@ -109,6 +121,8 @@ fun InlineDataEditorScreen(
     val pendingEdits by viewModel.pendingEdits.collectAsState()
     val pendingDeletes by viewModel.pendingDeletes.collectAsState()
     val hasPending = pendingEdits.isNotEmpty() || pendingDeletes.isNotEmpty()
+    // Multi-select batch edit: when editing a cell while rows are selected
+    var multiEditTarget by remember { mutableStateOf<Triple<Int, Int, Any?>?>(null) }
 
     LaunchedEffect(query) {
         editableQuery = query
@@ -204,7 +218,6 @@ fun InlineDataEditorScreen(
                         sel.forEach { viewModel.stageDelete(it) }
                         viewModel.deselectAll()
                     },
-                    onSave = if (hasPending) ({ showSaveConfirm = true }) else null,
                     onDiscard = { viewModel.clearStaged() }
                 )
             }
@@ -235,12 +248,42 @@ fun InlineDataEditorScreen(
                     pendingEdits = pendingEdits,
                     pendingDeletes = pendingDeletes,
                     isReadonly = isReadonly,
+                    sortColumn = sortColumn,
+                    sortAsc = sortAsc,
                     onCellClick = { rowIndex, colIndex, value ->
                         if (!isReadonly) {
-                            editingCell = Triple(rowIndex, colIndex, value)
+                            if (selectedRows.size > 1 && selectedRows.contains(rowIndex)) {
+                                // Multi-select batch edit
+                                multiEditTarget = Triple(rowIndex, colIndex, value)
+                            } else {
+                                editingCell = Triple(rowIndex, colIndex, value)
+                            }
                         }
                     },
+                    onColumnHeaderClick = { colIndex -> viewModel.toggleSort(colIndex) },
                     onRowToggle = { viewModel.toggleRowSelection(it) },
+                    onFilterByRow = { rowIndex ->
+                        val row = rows.getOrNull(rowIndex) ?: return@DataGrid
+                        val filterParts = mutableListOf<String>()
+                        row.forEachIndexed { idx, value ->
+                            val colName = columns.getOrNull(idx)?.name ?: return@forEachIndexed
+                            val filterVal = if (value == null) "IS NULL" else "= '${value.toString().replace("'", "''")}'"
+                            filterParts.add("`$colName` $filterVal")
+                        }
+                        viewModel.setWhereInput(filterParts.joinToString(" AND "))
+                        viewModel.applyWhereFilter()
+                    },
+                    onFilterByCell = { rowIndex, colIdx ->
+                        val row = rows.getOrNull(rowIndex) ?: return@DataGrid
+                        val colName = columns.getOrNull(colIdx)?.name ?: return@DataGrid
+                        val cellValue = row.getOrNull(colIdx)
+                        if (cellValue != null) {
+                            val filterVal = "'${cellValue.toString().replace("'", "''")}'"
+                            viewModel.setWhereInput("`$colName` = $filterVal")
+                            viewModel.applyWhereFilter()
+                        }
+                    },
+                    onDeleteRow = { rowIndex -> viewModel.stageDelete(rowIndex) },
                     onLoadMore = { viewModel.loadMore() },
                     hasMoreData = hasMoreData,
                     isLoadingMore = isLoadingMore,
@@ -262,7 +305,6 @@ fun InlineDataEditorScreen(
 
     editingCell?.let { (rowIndex, colIndex, value) ->
         val columnName = columns.getOrNull(colIndex)?.name ?: ""
-        // OK -> stage locally, highlight red, no immediate write
         CellEditDialog(
             columnName = columnName,
             initialValue = value?.toString() ?: "",
@@ -271,6 +313,36 @@ fun InlineDataEditorScreen(
                 editingCell = null
             },
             onDismiss = { editingCell = null }
+        )
+    }
+
+    // Multi-select batch edit confirmation
+    multiEditTarget?.let { (_, colIndex, _) ->
+        val columnName = columns.getOrNull(colIndex)?.name ?: ""
+        val currentValue = multiEditTarget?.third?.toString() ?: ""
+        var multiEditValue by remember { mutableStateOf(currentValue) }
+        AlertDialog(
+            onDismissRequest = { multiEditTarget = null },
+            title = { Text("Edit $columnName for ${selectedRows.size} rows") },
+            text = {
+                Column {
+                    Text("This value will be applied to all ${selectedRows.size} selected rows.", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = multiEditValue,
+                        onValueChange = { multiEditValue = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.stageEditMultiple(colIndex, columnName, multiEditValue)
+                    multiEditTarget = null
+                }) { Text("Apply to all") }
+            },
+            dismissButton = { TextButton(onClick = { multiEditTarget = null }) { Text("Cancel") } }
         )
     }
 
@@ -457,7 +529,6 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
     onDelete: () -> Unit,
-    onSave: (() -> Unit)? = null,
     onDiscard: (() -> Unit)? = null
 ) {
     Row(
@@ -482,18 +553,12 @@ private fun SelectionBar(
             }
             if (hasPending) {
                 TextButton(onClick = { onDiscard?.invoke() }, modifier = Modifier.height(28.dp)) { Text("Discard", style = MaterialTheme.typography.labelSmall) }
-                TextButton(onClick = { onSave?.invoke() }, enabled = !isLocked, modifier = Modifier.height(28.dp)) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(4.dp)); Text("Save", style = MaterialTheme.typography.labelSmall)
-                }
             }
         } else {
             Text("$totalCount rows", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (hasPending) {
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { onDiscard?.invoke() }, modifier = Modifier.height(28.dp)) { Text("Discard", style = MaterialTheme.typography.labelSmall) }
-                TextButton(onClick = { onSave?.invoke() }, enabled = !isLocked, modifier = Modifier.height(28.dp)) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)); Spacer(Modifier.width(4.dp)); Text("Save", style = MaterialTheme.typography.labelSmall)
-                }
             }
         }
     }
@@ -581,7 +646,7 @@ private fun StatusBar(
             Text(
                 text = buildString {
                     append("$rowCount row(s)")
-                    if (hasMoreData) append(" (more available)")
+                    if (hasMoreData) append(" +")
                     if (queryTimeMs != null) append(" \u2022 ${queryTimeMs}ms")
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -609,6 +674,7 @@ private fun StatusBar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DataGrid(
     columns: List<ColumnMetadata>,
@@ -617,8 +683,14 @@ private fun DataGrid(
     pendingEdits: Map<Pair<Int, Int>, com.sqlclient.android.ui.viewmodel.DataEditorViewModel.StagedEdit> = emptyMap(),
     pendingDeletes: Set<Int> = emptySet(),
     isReadonly: Boolean,
+    sortColumn: Int? = null,
+    sortAsc: Boolean = true,
     onCellClick: (rowIndex: Int, colIndex: Int, value: Any?) -> Unit,
+    onColumnHeaderClick: (colIndex: Int) -> Unit = {},
     onRowToggle: (Int) -> Unit,
+    onFilterByRow: (Int) -> Unit = {},
+    onFilterByCell: (rowIndex: Int, colIndex: Int) -> Unit = { _, _ -> },
+    onDeleteRow: (Int) -> Unit = {},
     onLoadMore: () -> Unit,
     hasMoreData: Boolean,
     isLoadingMore: Boolean,
@@ -627,11 +699,16 @@ private fun DataGrid(
     val horizontalScrollState = rememberScrollState()
     val lazyListState = rememberLazyListState()
     val cellWidth = 150.dp
+    val rowNumWidth = 48.dp
     val checkboxWidth = 48.dp
     val rowHeight = 40.dp
     val displayRows = androidx.compose.runtime.remember(rows) {
         rows.map { r -> r.map { v -> if (v == null) "NULL" else { val s = v.toString(); if (s.length > 200) s.take(200) + "…" else s } } }
     }
+    var contextMenuRow by remember { mutableStateOf<Int?>(null) }
+    var contextMenuColIndex by remember { mutableStateOf<Int?>(null) } // null = row number, >= 0 = cell column
+    val clipboard = LocalClipboardManager.current
+    val ctx = LocalContext.current
 
     LaunchedEffect(lazyListState, hasMoreData, isLoadingMore) {
         snapshotFlow {
@@ -651,27 +728,53 @@ private fun DataGrid(
                 .horizontalScroll(horizontalScrollState)
         ) {
             Column {
+                // Header row
                 Row(modifier = Modifier.background(MaterialTheme.colorScheme.primaryContainer)) {
+                    // Row number header
+                    Box(
+                        modifier = Modifier.width(rowNumWidth).height(rowHeight).padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "#", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
                     if (!isReadonly) {
                         Box(
                             modifier = Modifier.width(checkboxWidth).height(rowHeight).padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "#", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Checkbox(
+                                checked = selectedRows.size == rows.size && rows.isNotEmpty(),
+                                onCheckedChange = { checked ->
+                                    if (checked) onRowToggle(-1) else onRowToggle(-2)
+                                },
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
-                    columns.forEach { column ->
+                    columns.forEachIndexed { colIndex, column ->
+                        val isSorted = sortColumn == colIndex
                         Box(
-                            modifier = Modifier.width(cellWidth).height(rowHeight).padding(horizontal = 8.dp),
+                            modifier = Modifier.width(cellWidth).height(rowHeight).padding(horizontal = 8.dp)
+                                .clickable { onColumnHeaderClick(colIndex) },
                             contentAlignment = Alignment.CenterStart
                         ) {
-                            Text(
-                                text = column.name,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = column.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (isSorted) {
+                                    Icon(
+                                        imageVector = if (sortAsc) Icons.Default.ArrowDropDown else Icons.Default.ArrowDropUp,
+                                        contentDescription = if (sortAsc) "Ascending" else "Descending",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -679,50 +782,164 @@ private fun DataGrid(
                 LazyColumn(state = lazyListState, modifier = Modifier.fillMaxWidth()) {
                     itemsIndexed(rows, key = { index, _ -> index }, contentType = { _, _ -> "row" }) { rowIndex, row ->
                         val displayRow = displayRows.getOrNull(rowIndex) ?: emptyList()
+                        val isContextMenuTarget = contextMenuRow == rowIndex
                         Column {
-                            Row(modifier = Modifier.fillMaxWidth().height(rowHeight)
-                                .background(if (rowIndex % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
-                                if (!isReadonly) {
+                            Box(modifier = Modifier.pointerInput(rowIndex, isReadonly, row.size) {
+                                detectTapGestures(
+                                    onLongPress = { offset ->
+                                        val rowNumPx = with(this@pointerInput) { rowNumWidth.toPx() }
+                                        val isRowNumber = offset.x < rowNumPx
+                                        contextMenuRow = rowIndex
+                                        contextMenuColIndex = if (isRowNumber) null else {
+                                            val checkboxPx = with(this@pointerInput) { checkboxWidth.toPx() }
+                                            val cellPx = with(this@pointerInput) { cellWidth.toPx() }
+                                            val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
+                                            val idx = ((offset.x - startX) / cellPx).toInt()
+                                            if (idx in 0 until row.size) idx else null
+                                        }
+                                    },
+                                    onTap = { offset ->
+                                        if (!isReadonly) {
+                                            val density = this@pointerInput
+                                            val rowNumPx = with(density) { rowNumWidth.toPx() }
+                                            val checkboxPx = with(density) { checkboxWidth.toPx() }
+                                            val cellPx = with(density) { cellWidth.toPx() }
+                                            val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
+                                            val colIdx = ((offset.x - startX) / cellPx).toInt()
+                                            if (colIdx in 0 until row.size) {
+                                                val staged = pendingEdits[rowIndex to colIdx]?.newValue
+                                                val cellValue = row.getOrNull(colIdx)
+                                                onCellClick(rowIndex, colIdx, if (staged != null) staged else cellValue)
+                                            }
+                                        }
+                                    }
+                                )
+                            }) {
+                                Row(modifier = Modifier.fillMaxWidth().height(rowHeight)
+                                    .background(if (rowIndex % 2 == 0) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))) {
+                                    // Row number
                                     Box(
-                                        modifier = Modifier.width(checkboxWidth).height(rowHeight),
+                                        modifier = Modifier.width(rowNumWidth).height(rowHeight).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)).padding(horizontal = 4.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Checkbox(
-                                            checked = selectedRows.contains(rowIndex),
-                                            onCheckedChange = { onRowToggle(rowIndex) },
-                                            modifier = Modifier.size(20.dp)
+                                        Text(
+                                            text = (rowIndex + 1).toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                         )
+                                    }
+                                    if (!isReadonly) {
+                                        Box(
+                                            modifier = Modifier.width(checkboxWidth).height(rowHeight),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Checkbox(
+                                                checked = selectedRows.contains(rowIndex),
+                                                onCheckedChange = { onRowToggle(rowIndex) },
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    row.forEachIndexed { colIndex, cellValue ->
+                                        val isPending = pendingEdits.containsKey(rowIndex to colIndex)
+                                        val isDeletedRow = pendingDeletes.contains(rowIndex)
+                                        val staged = pendingEdits[rowIndex to colIndex]?.newValue
+                                        val cellText = when {
+                                            staged != null -> staged
+                                            else -> displayRow.getOrNull(colIndex) ?: "NULL"
+                                        }
+                                        val isNull = cellValue == null && staged == null
+                                        val bg = when {
+                                            isDeletedRow -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                                            isPending -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                                            else -> androidx.compose.ui.graphics.Color.Transparent
+                                        }
+                                        Box(
+                                            modifier = Modifier.width(cellWidth).height(rowHeight)
+                                                .background(bg)
+                                                .padding(horizontal = 8.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            Text(
+                                                text = cellText,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                                color = if (isDeletedRow || isPending) MaterialTheme.colorScheme.error else if (isNull) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = if (isPending || isDeletedRow) FontWeight.SemiBold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
-                                row.forEachIndexed { colIndex, cellValue ->
-                                    val isPending = pendingEdits.containsKey(rowIndex to colIndex)
-                                    val isDeletedRow = pendingDeletes.contains(rowIndex)
-                                    val staged = pendingEdits[rowIndex to colIndex]?.newValue
-                                    val cellText = when {
-                                        staged != null -> staged
-                                        else -> displayRow.getOrNull(colIndex) ?: "NULL"
-                                    }
-                                    val isNull = cellValue == null && staged == null
-                                    val bg = when {
-                                        isDeletedRow -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
-                                        isPending -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                                        else -> androidx.compose.ui.graphics.Color.Transparent
-                                    }
-                                    Box(
-                                        modifier = Modifier.width(cellWidth).height(rowHeight)
-                                            .background(bg)
-                                            .clickable { onCellClick(rowIndex, colIndex, if (staged != null) staged else cellValue) }
-                                            .padding(horizontal = 8.dp),
-                                        contentAlignment = Alignment.CenterStart
-                                    ) {
-                                        Text(
-                                            text = cellText,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                            color = if (isDeletedRow || isPending) MaterialTheme.colorScheme.error else if (isNull) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = if (isPending || isDeletedRow) FontWeight.SemiBold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                // Context menu
+                                DropdownMenu(
+                                    expanded = isContextMenuTarget,
+                                    onDismissRequest = { contextMenuRow = null; contextMenuColIndex = null },
+                                    modifier = Modifier.width(220.dp)
+                                ) {
+                                    val colIdx = contextMenuColIndex
+                                    if (colIdx == null) {
+                                        // Long press on row number: row-level actions
+                                        DropdownMenuItem(
+                                            text = { Text("Copy row") },
+                                            onClick = {
+                                                val rowText = row.joinToString(" | ") { it?.toString() ?: "NULL" }
+                                                clipboard.setText(AnnotatedString(rowText))
+                                                Toast.makeText(ctx, "Row copied", Toast.LENGTH_SHORT).show()
+                                                contextMenuRow = null; contextMenuColIndex = null
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) }
                                         )
+                                        DropdownMenuItem(
+                                            text = { Text("Filter by this row") },
+                                            onClick = {
+                                                onFilterByRow(rowIndex)
+                                                contextMenuRow = null; contextMenuColIndex = null
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                        )
+                                        if (!isReadonly) {
+                                            DropdownMenuItem(
+                                                text = { Text("Select row") },
+                                                onClick = {
+                                                    onRowToggle(rowIndex)
+                                                    contextMenuRow = null; contextMenuColIndex = null
+                                                },
+                                                leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("Delete row") },
+                                                onClick = {
+                                                    onDeleteRow(rowIndex)
+                                                    contextMenuRow = null; contextMenuColIndex = null
+                                                },
+                                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
+                                            )
+                                        }
+                                    } else {
+                                        // Long press on cell: cell-level actions
+                                        val cellValue = row.getOrNull(colIdx)
+                                        val colName = columns.getOrNull(colIdx)?.name ?: ""
+                                        DropdownMenuItem(
+                                            text = { Text("Copy value") },
+                                            onClick = {
+                                                val text = cellValue?.toString() ?: "NULL"
+                                                clipboard.setText(AnnotatedString(text))
+                                                Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+                                                contextMenuRow = null; contextMenuColIndex = null
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                        )
+                                        if (cellValue != null && colName.isNotEmpty()) {
+                                            DropdownMenuItem(
+                                                text = { Text("Filter: $colName = ${cellValue.toString().take(20)}") },
+                                                onClick = {
+                                                    onFilterByCell(rowIndex, colIdx)
+                                                    contextMenuRow = null; contextMenuColIndex = null
+                                                },
+                                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                            )
+                                        }
                                     }
                                 }
                             }

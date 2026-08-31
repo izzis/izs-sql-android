@@ -112,7 +112,10 @@ fun AppTopBar(
             }
             if (onSave != null) {
                 IconButton(onClick = onSave) {
-                    Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Text("SAVE", style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             if (showLock && onToggleLock != null) {
