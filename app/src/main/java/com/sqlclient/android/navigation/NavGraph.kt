@@ -135,7 +135,7 @@ fun NavGraph(themeManager: ThemeManager) {
                     onOpenDataEditor = { db, table ->
                         navController.navigate("data_editor/$db/$table")
                     },
-                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/$host") },
+                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
                     onReconnect = { connectionViewModel.reconnect() },
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
@@ -243,7 +243,7 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
-                onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/$host") },
+                onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
                 onReconnect = { connectionViewModel.reconnect() },
                 isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
