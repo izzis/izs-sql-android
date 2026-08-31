@@ -55,6 +55,7 @@ class DataEditorViewModel @Inject constructor(
     private var currentTable: String = ""
     private var autoIncrementColumn: String? = null
     private var pkColumnIndex: Int = -1
+    private var pkColumns: List<Pair<Int, String>> = emptyList()
     private var currentOffset: Int = 0
 
     private val _hasLoaded = MutableStateFlow(false)
@@ -74,13 +75,13 @@ class DataEditorViewModel @Inject constructor(
     val lastQueryDurationMs: StateFlow<Long?> = _lastQueryDurationMs.asStateFlow()
 
     // --- Batched staging: OK -> red highlight -> Save -> Confirm -> Execute ---
+    // wherePairs is the WHERE clause to identify the row (PKs if available, else full row)
     data class StagedEdit(
         val rowIndex: Int,
         val colIndex: Int,
         val columnName: String,
         val newValue: String,
-        val pkColumn: String,
-        val pkValue: Any?
+        val wherePairs: List<Pair<String, Any?>>
     )
 
     private val _pendingEdits = MutableStateFlow<Map<Pair<Int, Int>, StagedEdit>>(emptyMap())
@@ -96,15 +97,22 @@ class DataEditorViewModel @Inject constructor(
     fun getStagedValue(rowIndex: Int, colIndex: Int): String? = _pendingEdits.value[rowIndex to colIndex]?.newValue
 
     fun stageEdit(rowIndex: Int, colIndex: Int, columnName: String, newValue: String) {
-        val pkCol = autoIncrementColumn ?: return
-        if (pkColumnIndex < 0) return
-        val pkVal = _rows.value.getOrNull(rowIndex)?.getOrNull(pkColumnIndex)
         val original = _rows.value.getOrNull(rowIndex)?.getOrNull(colIndex)?.toString() ?: ""
-        // If value equals original, remove staging
         if (newValue == original) {
             _pendingEdits.value = _pendingEdits.value - (rowIndex to colIndex)
         } else {
-            val edit = StagedEdit(rowIndex, colIndex, columnName, newValue, pkCol, pkVal)
+            val wherePairs = when {
+                pkColumns.isNotEmpty() -> pkColumns.map { (idx, name) -> name to _rows.value.getOrNull(rowIndex)?.getOrNull(idx) }
+                else -> {
+                    // No PK: use all columns as WHERE (best-effort)
+                    _columns.value.mapIndexed { idx, col -> col.name to _rows.value.getOrNull(rowIndex)?.getOrNull(idx) }
+                }
+            }
+            if (wherePairs.isEmpty()) {
+                _error.value = "Cannot edit: table has no columns/PK info yet. Refresh or try again."
+                return
+            }
+            val edit = StagedEdit(rowIndex, colIndex, columnName, newValue, wherePairs)
             _pendingEdits.value = _pendingEdits.value + ((rowIndex to colIndex) to edit)
         }
         refreshCurrentQueryPreview()
@@ -128,6 +136,12 @@ class DataEditorViewModel @Inject constructor(
         _currentQuery.value = if (sqls.isNotEmpty()) sqls.joinToString(";\n") else _query.value
     }
 
+    private fun formatWhere(pairs: List<Pair<String, Any?>>): String {
+        return pairs.joinToString(" AND ") { (col, v) ->
+            if (v == null) "`$col` IS NULL" else "`$col` = ${formatSqlValue(v)}"
+        }
+    }
+
     fun buildPendingSqls(database: String = currentDatabase, table: String = currentTable): List<String> {
         if (database.isBlank() || table.isBlank()) return emptyList()
         val result = mutableListOf<String>()
@@ -137,16 +151,35 @@ class DataEditorViewModel @Inject constructor(
             if (edits.isEmpty()) continue
             val first = edits.first()
             val setClause = edits.joinToString(", ") { "`${it.columnName}` = ${formatSqlValue(it.newValue)}" }
-            val pkStr = formatSqlValue(first.pkValue)
-            result.add("UPDATE `$database`.`$table` SET $setClause WHERE `${first.pkColumn}` = $pkStr")
+            val whereClause = formatWhere(first.wherePairs)
+            result.add("UPDATE `$database`.`$table` SET $setClause WHERE $whereClause")
         }
         if (_pendingDeletes.value.isNotEmpty()) {
-            val pkCol = autoIncrementColumn ?: ""
-            if (pkCol.isNotBlank() && pkColumnIndex >= 0) {
-                val pkVals = _pendingDeletes.value.mapNotNull { idx -> _rows.value.getOrNull(idx)?.getOrNull(pkColumnIndex)?.let { formatSqlValue(it) } }
-                if (pkVals.isNotEmpty()) {
-                    if (pkVals.size == 1) result.add("DELETE FROM `$database`.`$table` WHERE `$pkCol` = ${pkVals.first()}")
-                    else result.add("DELETE FROM `$database`.`$table` WHERE `$pkCol` IN (${pkVals.joinToString(", ")})")
+            // For deletes: if PK exists, use IN for efficiency; else per-row AND
+            if (pkColumns.isNotEmpty()) {
+                // Check if single PK column -> can use IN
+                if (pkColumns.size == 1) {
+                    val pkName = pkColumns.first().second
+                    val pkIdx = pkColumns.first().first
+                    val pkVals = _pendingDeletes.value.mapNotNull { idx -> _rows.value.getOrNull(idx)?.getOrNull(pkIdx)?.let { formatSqlValue(it) } }
+                    if (pkVals.isNotEmpty()) {
+                        if (pkVals.size == 1) result.add("DELETE FROM `$database`.`$table` WHERE `$pkName` = ${pkVals.first()}")
+                        else result.add("DELETE FROM `$database`.`$table` WHERE `$pkName` IN (${pkVals.joinToString(", ")})")
+                    }
+                } else {
+                    // composite PK -> one DELETE per row
+                    for (rowIdx in _pendingDeletes.value) {
+                        val wherePairs = pkColumns.map { (idx, name) -> name to _rows.value.getOrNull(rowIdx)?.getOrNull(idx) }
+                        result.add("DELETE FROM `$database`.`$table` WHERE ${formatWhere(wherePairs)}")
+                    }
+                }
+            } else {
+                // No PK: one DELETE per row with full-row WHERE
+                for (rowIdx in _pendingDeletes.value) {
+                    val wherePairs = _columns.value.mapIndexed { idx, col -> col.name to _rows.value.getOrNull(rowIdx)?.getOrNull(idx) }
+                    if (wherePairs.isNotEmpty()) {
+                        result.add("DELETE FROM `$database`.`$table` WHERE ${formatWhere(wherePairs)}")
+                    }
                 }
             }
         }
@@ -460,20 +493,30 @@ class DataEditorViewModel @Inject constructor(
     private suspend fun loadColumnInfo(database: String, table: String) {
         autoIncrementColumn = null
         pkColumnIndex = -1
+        pkColumns = emptyList()
 
         val sql = "SHOW FULL COLUMNS FROM `$database`.`$table`"
         when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
+                val pks = mutableListOf<Pair<Int, String>>()
                 result.rows.forEachIndexed { index, row ->
+                    val colName = row[0].toString()
                     val isAutoInc = row[5]?.toString()?.contains("auto_increment") == true
                             || row[1].toString().contains("auto_increment")
+                    val isPri = row[4].toString().contains("PRI")
+                    if (isPri) pks.add(index to colName)
                     if (isAutoInc && autoIncrementColumn == null) {
-                        autoIncrementColumn = row[0].toString()
+                        autoIncrementColumn = colName
+                        if (pkColumnIndex == -1) pkColumnIndex = index
+                    }
+                    if (isPri && pkColumnIndex == -1) {
                         pkColumnIndex = index
                     }
-                    if (row[4].toString().contains("PRI") && pkColumnIndex == -1) {
-                        pkColumnIndex = index
-                    }
+                }
+                pkColumns = pks
+                // fallback: if no PRI but autoInc found, treat it as PK
+                if (pkColumns.isEmpty() && autoIncrementColumn != null && pkColumnIndex >= 0) {
+                    pkColumns = listOf(pkColumnIndex to autoIncrementColumn!!)
                 }
             }
             is QueryResult.Error -> {}

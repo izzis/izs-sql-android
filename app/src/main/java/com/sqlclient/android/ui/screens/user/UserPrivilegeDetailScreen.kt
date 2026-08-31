@@ -190,11 +190,13 @@ fun UserPrivilegeDetailScreen(
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp)) }
             }
             if (hasPendingPriv) {
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), RoundedCornerShape(6.dp)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${pendingPrivChanges.size} pending change(s)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { viewModel.clearPendingPrivs(user, host) }) { Text("Discard") }
-                    TextButton(onClick = { showPrivSaveConfirm = true }, enabled = !isLocked) { Text("Save") }
+                Spacer(Modifier.height(6.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${pendingPrivChanges.size} pending", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("— Save to confirm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.clearPendingPrivs(user, host) }, modifier = Modifier.height(28.dp)) { Text("Discard", style = MaterialTheme.typography.labelSmall) }
                 }
             }
             Spacer(Modifier.height(8.dp))

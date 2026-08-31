@@ -79,10 +79,9 @@ import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.DatabaseTree
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel
+import com.sqlclient.android.ui.viewmodel.BrowserViewModel.BrowserPanel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 import kotlinx.coroutines.launch
-
-enum class BrowserPanel { TABLE_INFO, USERS, HISTORY }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,7 +122,7 @@ fun DatabaseBrowserScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Browser", "Info")
-    var activePanel by remember { mutableStateOf(BrowserPanel.TABLE_INFO) }
+    val activePanel by viewModel.activePanel.collectAsState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
@@ -131,7 +130,7 @@ fun DatabaseBrowserScreen(
         viewModel.clearSelectedDatabase()
     }
     BackHandler(enabled = activePanel != BrowserPanel.TABLE_INFO && selectedDatabase == null) {
-        activePanel = BrowserPanel.TABLE_INFO
+        viewModel.setActivePanel(BrowserPanel.TABLE_INFO)
     }
 
     // Manual refresh only: first open if cache empty, otherwise use cache (back preserves cache)
@@ -184,16 +183,16 @@ fun DatabaseBrowserScreen(
                     onRefreshDatabases = { viewModel.refreshDatabases() },
                     onDatabaseClick = { db ->
                         viewModel.selectDatabase(db)
-                        activePanel = BrowserPanel.TABLE_INFO
+                        viewModel.setActivePanel(BrowserPanel.TABLE_INFO)
                         scope.launch { drawerState.close() }
                     },
                     onUsersClick = {
-                        activePanel = BrowserPanel.USERS
+                        viewModel.setActivePanel(BrowserPanel.USERS)
                         if (!userViewModel.hasLoaded.value) userViewModel.loadUsers()
                         scope.launch { drawerState.close() }
                     },
                     onHistoryClick = {
-                        activePanel = BrowserPanel.HISTORY
+                        viewModel.setActivePanel(BrowserPanel.HISTORY)
                         scope.launch { drawerState.close() }
                     },
                     selectedDatabase = selectedDatabase
@@ -298,10 +297,10 @@ fun DatabaseBrowserScreen(
                                         viewModel.selectDatabase(db)
                                     },
                                     onUsersClick = {
-                                        activePanel = BrowserPanel.USERS
+                                        viewModel.setActivePanel(BrowserPanel.USERS)
                                         if (!userViewModel.hasLoaded.value) userViewModel.loadUsers()
                                     },
-                                    onHistoryClick = { activePanel = BrowserPanel.HISTORY },
+                                    onHistoryClick = { viewModel.setActivePanel(BrowserPanel.HISTORY) },
                                     modifier = Modifier.weight(1f)
                                 )
                             }

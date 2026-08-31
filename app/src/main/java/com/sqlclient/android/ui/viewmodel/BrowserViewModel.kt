@@ -77,6 +77,12 @@ class BrowserViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow("")
     val currentQuery: StateFlow<String> = _currentQuery
 
+    // Keep active panel in VM so it survives navigation to user_detail and back
+    enum class BrowserPanel { TABLE_INFO, USERS, HISTORY }
+    private val _activePanel = MutableStateFlow(BrowserPanel.TABLE_INFO)
+    val activePanel: StateFlow<BrowserPanel> = _activePanel
+    fun setActivePanel(panel: BrowserPanel) { _activePanel.value = panel }
+
     private val systemSchemas = setOf("information_schema", "performance_schema", "sys")
 
     // Keep filtered flag for table search on main screen
