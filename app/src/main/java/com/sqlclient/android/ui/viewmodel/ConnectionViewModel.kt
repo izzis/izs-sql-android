@@ -162,6 +162,14 @@ class ConnectionViewModel @Inject constructor(
     fun hasStoredPassword(profileId: Long): Boolean {
         return credentialStore.hasPassword(profileId)
     }
+
+    fun hasStoredSshPassword(profileId: Long): Boolean {
+        return credentialStore.hasSshPassword(profileId)
+    }
+
+    fun hasStoredSshPassphrase(profileId: Long): Boolean {
+        return credentialStore.hasSshPassphrase(profileId)
+    }
 }
 
 sealed class ConnectionState {

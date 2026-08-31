@@ -93,8 +93,17 @@ fun ConnectionEditorScreen(
     var sshPort by remember { mutableStateOf(existingProfile?.sshPort?.toString() ?: "22") }
     var sshUsername by remember { mutableStateOf(existingProfile?.sshUsername ?: "") }
     var sshPassword by remember { mutableStateOf("") }
+    var sshPasswordVisible by remember { mutableStateOf(false) }
     var sshKeyPath by remember { mutableStateOf(existingProfile?.sshKeyPath ?: "") }
     var sshPassphrase by remember { mutableStateOf("") }
+    var sshPassphraseVisible by remember { mutableStateOf(false) }
+
+    val hasStoredSshPassword = remember(existingProfile?.id) {
+        existingProfile?.id?.let { viewModel.hasStoredSshPassword(it) } ?: false
+    }
+    val hasStoredSshPassphrase = remember(existingProfile?.id) {
+        existingProfile?.id?.let { viewModel.hasStoredSshPassphrase(it) } ?: false
+    }
 
     var useSsl by remember { mutableStateOf(existingProfile?.useSsl ?: false) }
 
@@ -293,9 +302,25 @@ fun ConnectionEditorScreen(
                         value = sshPassword,
                         onValueChange = { sshPassword = it },
                         label = { Text("SSH Password") },
+                        supportingText = {
+                            if (existingProfile != null && hasStoredSshPassword && sshPassword.isEmpty()) {
+                                Text(
+                                    text = "Password is saved. Leave blank to keep current, or type new password.",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation()
+                        visualTransformation = if (sshPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { sshPasswordVisible = !sshPasswordVisible }) {
+                                Icon(
+                                    imageVector = if (sshPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (sshPasswordVisible) "Hide password" else "Show password"
+                                )
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -314,9 +339,25 @@ fun ConnectionEditorScreen(
                         value = sshPassphrase,
                         onValueChange = { sshPassphrase = it },
                         label = { Text("SSH Key Passphrase (optional)") },
+                        supportingText = {
+                            if (existingProfile != null && hasStoredSshPassphrase && sshPassphrase.isEmpty()) {
+                                Text(
+                                    text = "Passphrase is saved. Leave blank to keep current, or type new passphrase.",
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation()
+                        visualTransformation = if (sshPassphraseVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { sshPassphraseVisible = !sshPassphraseVisible }) {
+                                Icon(
+                                    imageVector = if (sshPassphraseVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (sshPassphraseVisible) "Hide passphrase" else "Show passphrase"
+                                )
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))

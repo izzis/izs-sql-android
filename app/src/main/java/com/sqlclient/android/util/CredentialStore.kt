@@ -69,4 +69,12 @@ class CredentialStore @Inject constructor(
     fun hasPassword(profileId: Long): Boolean {
         return !getPassword(profileId).isNullOrBlank()
     }
+
+    fun hasSshPassword(profileId: Long): Boolean {
+        return !getSshPassword(profileId).isNullOrBlank()
+    }
+
+    fun hasSshPassphrase(profileId: Long): Boolean {
+        return !getSshPassphrase(profileId).isNullOrBlank()
+    }
 }
