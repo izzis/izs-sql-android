@@ -63,7 +63,7 @@ import com.sqlclient.android.ui.viewmodel.TestResult
 fun ConnectionEditorScreen(
     viewModel: ConnectionViewModel,
     existingProfile: ConnectionProfileEntity? = null,
-    onSave: (ConnectionProfileEntity, String, String?, String?) -> Unit,
+    onSave: (ConnectionProfileEntity, String?, String?, String?) -> Unit,
     onBack: () -> Unit
 ) {
     var name by remember { mutableStateOf(existingProfile?.name ?: "") }
@@ -507,8 +507,11 @@ fun ConnectionEditorScreen(
                             useSshTunnel, sshHost, sshPort.toIntOrNull() ?: 22,
                             sshUsername, sshKeyPath, useSsl
                         )
+                        // Pass null when blank — repository will skip saving, preserving stored value
                         val passwordToSend = password.ifBlank { null }
-                        onSave(profile, passwordToSend ?: "", sshPassword.ifBlank { null }, sshPassphrase.ifBlank { null })
+                        val sshPwdToSend = sshPassword.ifBlank { null }
+                        val sshPhraseToSend = sshPassphrase.ifBlank { null }
+                        onSave(profile, passwordToSend, sshPwdToSend, sshPhraseToSend)
                     },
                     modifier = Modifier.weight(1f),
                     enabled = name.isNotBlank() && host.isNotBlank() && username.isNotBlank()

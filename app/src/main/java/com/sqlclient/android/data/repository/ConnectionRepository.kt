@@ -30,7 +30,9 @@ class ConnectionRepository @Inject constructor(
         val id = profileDao.insertProfile(profile)
         val profileId = if (id == 0L) profile.id else id
 
-        credentialStore.savePassword(profileId, password)
+        if (password.isNotBlank()) {
+            credentialStore.savePassword(profileId, password)
+        }
 
         if (profile.useSshTunnel) {
             sshPassword?.let { credentialStore.saveSshPassword(profileId, it) }
@@ -42,17 +44,24 @@ class ConnectionRepository @Inject constructor(
 
     suspend fun updateProfile(
         profile: ConnectionProfileEntity,
-        password: String?,
+        password: String? = null,
         sshPassword: String? = null,
         sshPassphrase: String? = null
     ) {
         profileDao.updateProfile(profile)
 
-        password?.let { credentialStore.savePassword(profile.id, it) }
+        // Only save password if non-null and non-blank — preserves stored value when user leaves blank
+        if (!password.isNullOrBlank()) {
+            credentialStore.savePassword(profile.id, password)
+        }
 
         if (profile.useSshTunnel) {
-            sshPassword?.let { credentialStore.saveSshPassword(profile.id, it) }
-            sshPassphrase?.let { credentialStore.saveSshPassphrase(profile.id, it) }
+            if (!sshPassword.isNullOrBlank()) {
+                credentialStore.saveSshPassword(profile.id, sshPassword)
+            }
+            if (!sshPassphrase.isNullOrBlank()) {
+                credentialStore.saveSshPassphrase(profile.id, sshPassphrase)
+            }
         }
     }
 

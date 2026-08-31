@@ -78,7 +78,9 @@ fun NavGraph(themeManager: ThemeManager) {
             ConnectionEditorScreen(
                 viewModel = connectionViewModel,
                 onSave = { profile, password, sshPassword, sshPassphrase ->
-                    connectionViewModel.saveProfile(profile, password, sshPassword, sshPassphrase)
+                    if (password != null) {
+                        connectionViewModel.saveProfile(profile, password, sshPassword, sshPassphrase)
+                    }
                     navController.popBackStack()
                 },
                 onBack = {
