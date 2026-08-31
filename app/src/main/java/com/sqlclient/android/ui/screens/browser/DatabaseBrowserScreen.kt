@@ -95,7 +95,9 @@ fun DatabaseBrowserScreen(
     onOpenQuery: (String, String) -> Unit,
     onOpenTableStructure: (String, String) -> Unit,
     onOpenDataEditor: (String, String) -> Unit,
-    onOpenUserDetail: (String, String) -> Unit = { _, _ -> }
+    onOpenUserDetail: (String, String) -> Unit = { _, _ -> },
+    isAlive: Boolean = true,
+    onReconnect: (() -> Unit)? = null
 ) {
     val databases by viewModel.databases.collectAsState()
     val visibleDatabases by viewModel.visibleDatabases.collectAsState()
@@ -215,7 +217,9 @@ fun DatabaseBrowserScreen(
                     isRefreshing = isTopBarRefreshing,
                     isLocked = isLocked,
                     onToggleLock = onToggleLock,
-                    onDisconnect = onDisconnect
+                    onDisconnect = onDisconnect,
+                    isAlive = isAlive,
+                    onReconnect = onReconnect
                 )
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },

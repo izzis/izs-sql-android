@@ -8,11 +8,13 @@ import com.sqlclient.android.data.remote.SshTunnelManager
 import com.sqlclient.android.data.repository.ConnectionRepository
 import com.sqlclient.android.util.CredentialStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,6 +46,12 @@ class ConnectionViewModel @Inject constructor(
      *  profile.isReadonly is only the default for next connect. */
     private val _sessionLocked = MutableStateFlow(false)
     val sessionLocked: StateFlow<Boolean> = _sessionLocked.asStateFlow()
+
+    /** Live connection health — green dot = alive, red dot = dead */
+    private val _isAlive = MutableStateFlow(false)
+    val isAlive: StateFlow<Boolean> = _isAlive.asStateFlow()
+
+    private var healthCheckJob: kotlinx.coroutines.Job? = null
 
     fun setSessionLocked(locked: Boolean) {
         _sessionLocked.value = locked
@@ -131,18 +139,65 @@ class ConnectionViewModel @Inject constructor(
                 is ConnectionResult.Success -> {
                     _connectionState.value = ConnectionState.Connected(profile)
                     _sessionLocked.value = profile.isReadonly
+                    _isAlive.value = true
+                    startHealthCheck()
                 }
                 is ConnectionResult.Error -> {
                     _connectionState.value = ConnectionState.Error(result.message)
+                    _isAlive.value = false
+                }
+            }
+        }
+    }
+
+    fun reconnect() {
+        val current = _connectionState.value
+        if (current !is ConnectionState.Connected) return
+        val profile = current.profile
+        viewModelScope.launch {
+            _connectionState.value = ConnectionState.Connecting
+            when (val result = connectionRepository.connect(profile)) {
+                is ConnectionResult.Success -> {
+                    _connectionState.value = ConnectionState.Connected(profile)
+                    _sessionLocked.value = profile.isReadonly
+                    _isAlive.value = true
+                    startHealthCheck()
+                }
+                is ConnectionResult.Error -> {
+                    _connectionState.value = ConnectionState.Error(result.message)
+                    _isAlive.value = false
+                }
+            }
+        }
+    }
+
+    fun markDisconnected() {
+        _isAlive.value = false
+        healthCheckJob?.cancel()
+    }
+
+    private fun startHealthCheck() {
+        healthCheckJob?.cancel()
+        healthCheckJob = viewModelScope.launch {
+            while (isActive) {
+                delay(30_000) // check every 30 seconds
+                val connected = _connectionState.value is ConnectionState.Connected
+                if (connected) {
+                    _isAlive.value = connectionRepository.isConnected()
+                } else {
+                    _isAlive.value = false
+                    break
                 }
             }
         }
     }
 
     fun disconnect() {
+        healthCheckJob?.cancel()
         connectionRepository.disconnect()
         _connectionState.value = ConnectionState.Disconnected
         _sessionLocked.value = false
+        _isAlive.value = false
     }
 
     fun clearTestResult() {

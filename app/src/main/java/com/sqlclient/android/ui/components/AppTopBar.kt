@@ -1,9 +1,12 @@
 package com.sqlclient.android.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -24,6 +27,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +54,9 @@ fun AppTopBar(
     showRefresh: Boolean = true,
     onSave: (() -> Unit)? = null,
     onStructure: (() -> Unit)? = null,
-    onBackOrDisconnect: (() -> Unit)? = null
+    onBackOrDisconnect: (() -> Unit)? = null,
+    isAlive: Boolean = true,
+    onReconnect: (() -> Unit)? = null
 ) {
     // Backward compat: map old param to new
     val effectiveOnBack = onBack ?: onBackOrDisconnect
@@ -125,6 +131,22 @@ fun AppTopBar(
                         contentDescription = if (isLocked) "Unlock" else "Lock",
                         tint = Color.White
                     )
+                }
+            }
+            // Connection status dot + reconnect
+            if (onReconnect != null) {
+                IconButton(onClick = onReconnect) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(if (isAlive) Color(0xFF4CAF50) else Color(0xFFF44336))
+                        )
+                        if (!isAlive) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Reconnect", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
                 }
             }
             if (showRefresh && onRefresh != null) {
