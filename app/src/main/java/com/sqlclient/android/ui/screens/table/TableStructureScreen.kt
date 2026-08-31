@@ -75,8 +75,8 @@ fun TableStructureScreen(
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
-    isAlive: Boolean = true,
-    onReconnect: (() -> Unit)? = null
+    onReconnect: (() -> Unit)? = null,
+    isReconnecting: Boolean = false
 ) {
     val columns by viewModel.columns.collectAsState()
     val createTable by viewModel.createTable.collectAsState()
@@ -132,8 +132,8 @@ fun TableStructureScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

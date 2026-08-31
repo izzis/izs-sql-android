@@ -92,9 +92,8 @@ fun InlineDataEditorScreen(
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenStructure: (() -> Unit)? = null,
-    isAlive: Boolean = true,
     onReconnect: (() -> Unit)? = null,
-    onConnectionLost: (() -> Unit)? = null
+    isReconnecting: Boolean = false
 ) {
     val columns by viewModel.columns.collectAsState()
     val rows by viewModel.rows.collectAsState()
@@ -138,9 +137,6 @@ fun InlineDataEditorScreen(
     LaunchedEffect(error) {
         error?.let {
             snackbarHostState.showSnackbar(it)
-            if (it.contains("Connection is closed", ignoreCase = true) || it.contains("Connection is Closed", ignoreCase = true)) {
-                onConnectionLost?.invoke()
-            }
             viewModel.clearError()
         }
     }
@@ -172,8 +168,8 @@ fun InlineDataEditorScreen(
                 onBack = onBack,
                 onStructure = onOpenStructure,
                 onSave = if (hasPending) ({ showSaveConfirm = true }) else null,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

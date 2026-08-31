@@ -61,9 +61,8 @@ fun QueryEditorScreen(
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
-    isAlive: Boolean = true,
     onReconnect: (() -> Unit)? = null,
-    onConnectionLost: (() -> Unit)? = null
+    isReconnecting: Boolean = false
 ) {
     val queryTabs by viewModel.queryTabs.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
@@ -103,8 +102,8 @@ fun QueryEditorScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         bottomBar = { CurrentQueryBar(queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query)) }
@@ -286,11 +285,6 @@ fun QueryEditorScreen(
                     }
                 }
                 is QueryResultState.Error -> {
-                    LaunchedEffect(result.message) {
-                        if (result.message.contains("Connection is closed", ignoreCase = true)) {
-                            onConnectionLost?.invoke()
-                        }
-                    }
                     Column(
                         modifier = Modifier
                             .fillMaxSize()

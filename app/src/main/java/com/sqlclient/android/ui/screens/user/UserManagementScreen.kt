@@ -79,8 +79,8 @@ fun UserManagementScreen(
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenUserDetail: (String, String) -> Unit = { _, _ -> },
-    isAlive: Boolean = true,
-    onReconnect: (() -> Unit)? = null
+    onReconnect: (() -> Unit)? = null,
+    isReconnecting: Boolean = false
 ) {
     val users by viewModel.users.collectAsState()
     val grants by viewModel.grants.collectAsState()
@@ -129,8 +129,8 @@ fun UserManagementScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

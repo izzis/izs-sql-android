@@ -109,5 +109,7 @@ class ConnectionRepository @Inject constructor(
 
     fun isConnected(): Boolean = connectionManager.isConnected()
 
+    suspend fun ping(): Boolean = connectionManager.ping()
+
     suspend fun getProfileCount(): Int = profileDao.getProfileCount()
 }

@@ -65,8 +65,8 @@ fun UserPrivilegeDetailScreen(
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
-    isAlive: Boolean = true,
-    onReconnect: (() -> Unit)? = null
+    onReconnect: (() -> Unit)? = null,
+    isReconnecting: Boolean = false
 ) {
     val grants by viewModel.grants.collectAsState()
     val allDatabases by viewModel.allDatabases.collectAsState()
@@ -176,8 +176,8 @@ fun UserPrivilegeDetailScreen(
                 onToggleLock = onToggleLock,
                 showLock = true,
                 onSave = if (hasPendingPriv) ({ showPrivSaveConfirm = true }) else null,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

@@ -80,8 +80,8 @@ fun IndexManagementScreen(
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
-    isAlive: Boolean = true,
-    onReconnect: (() -> Unit)? = null
+    onReconnect: (() -> Unit)? = null,
+    isReconnecting: Boolean = false
 ) {
     val indexes by viewModel.indexes.collectAsState()
     val columns by viewModel.columns.collectAsState()
@@ -131,8 +131,8 @@ fun IndexManagementScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
-                isAlive = isAlive,
-                onReconnect = onReconnect
+                onReconnect = onReconnect,
+                isReconnecting = isReconnecting
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

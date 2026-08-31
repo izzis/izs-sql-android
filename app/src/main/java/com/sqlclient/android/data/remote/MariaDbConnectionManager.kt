@@ -227,6 +227,12 @@ class MariaDbConnectionManager @Inject constructor(
         }
     }
 
+    /** Verify connection is actually alive by running SELECT 1. */
+    suspend fun ping(): Boolean = withContext(Dispatchers.IO) {
+        val result = executeQueryIfFree("SELECT 1")
+        result is QueryResult.Success
+    }
+
     fun disconnect() {
         try {
             activeConnection?.close()

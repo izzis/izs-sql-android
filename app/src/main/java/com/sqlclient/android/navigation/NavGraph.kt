@@ -122,11 +122,10 @@ fun NavGraph(themeManager: ThemeManager) {
             val userPermissionViewModel: UserPermissionViewModel = hiltViewModel()
 
             if (currentProfile != null) {
-                val profile = currentProfile!!
                 DatabaseBrowserScreen(
                     viewModel = browserViewModel,
                     userViewModel = userPermissionViewModel,
-                    profile = profile,
+                    profile = currentProfile,
                     onDisconnect = {
                         connectionViewModel.disconnect()
                         browserViewModel.clearAll()
@@ -145,8 +144,8 @@ fun NavGraph(themeManager: ThemeManager) {
                         navController.navigate("data_editor/$db/$table")
                     },
                     onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/$host") },
-                    isAlive = connectionViewModel.isAlive.collectAsState().value,
-                    onReconnect = { connectionViewModel.reconnect() }
+                    onReconnect = { connectionViewModel.reconnect() },
+                    isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
             } else if (connectionError != null) {
                 LaunchedEffect(Unit) {
@@ -171,15 +170,14 @@ fun NavGraph(themeManager: ThemeManager) {
             if (currentProfile != null) {
                 QueryEditorScreen(
                     viewModel = queryViewModel,
-                    profile = currentProfile!!,
+                    profile = currentProfile,
                     database = database,
                     table = table,
                     isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                     onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                     onBack = { navController.popBackStack() },
-                    isAlive = connectionViewModel.isAlive.collectAsState().value,
                     onReconnect = { connectionViewModel.reconnect() },
-                    onConnectionLost = { connectionViewModel.markDisconnected() }
+                    isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
             }
         }
@@ -203,8 +201,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
-                isAlive = connectionViewModel.isAlive.collectAsState().value,
-                onReconnect = { connectionViewModel.reconnect() }
+                onReconnect = { connectionViewModel.reconnect() },
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
         }
 
@@ -224,16 +222,15 @@ fun NavGraph(themeManager: ThemeManager) {
             if (currentProfile != null) {
                 InlineDataEditorScreen(
                     viewModel = dataEditorViewModel,
-                    profile = currentProfile!!,
+                    profile = currentProfile,
                     database = database,
                     table = table,
                     isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                     onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                     onBack = { navController.popBackStack() },
                     onOpenStructure = { navController.navigate("structure/$database/$table") },
-                    isAlive = connectionViewModel.isAlive.collectAsState().value,
                     onReconnect = { connectionViewModel.reconnect() },
-                    onConnectionLost = { connectionViewModel.markDisconnected() }
+                    isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
             }
         }
@@ -247,8 +244,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
                 onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/$host") },
-                isAlive = connectionViewModel.isAlive.collectAsState().value,
-                onReconnect = { connectionViewModel.reconnect() }
+                onReconnect = { connectionViewModel.reconnect() },
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
         }
 
@@ -269,8 +266,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
-                isAlive = connectionViewModel.isAlive.collectAsState().value,
-                onReconnect = { connectionViewModel.reconnect() }
+                onReconnect = { connectionViewModel.reconnect() },
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
         }
 
@@ -291,8 +288,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
-                isAlive = connectionViewModel.isAlive.collectAsState().value,
-                onReconnect = { connectionViewModel.reconnect() }
+                onReconnect = { connectionViewModel.reconnect() },
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
         }
     }
