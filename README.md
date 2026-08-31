@@ -34,8 +34,8 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.jcraft:jsch:0.1.55`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
 - **Database browser** — sidebar (`AppSidebar`/`DatabaseTree`) + main panel; database/table lists are **privilege-filtered** via `PrivilegeResolver` (`PrivilegeSet`), manual refresh, `windowInsets` cache.
 - **Table inspection** — `SHOW TABLES` / `SHOW FULL COLUMNS FROM db.table` lazy-loaded on expand (columns/indexes), `SYSTEM_SCHEMAS` filtered out.
-- **Query editor** — monospace editor with history tab, current-query bar at the bottom, syntax-agnostic (single `statement.execute(sql)`; no client-side parsing), 30 s timeout, read-only guard.
-- **Inline data editor** — paginated `LIMIT/OFFSET` grid (limit presets 100/200/500/1000) with infinite scroll (`snapshotFlow` + `loadMore`), **quick WHERE filter** (`WHERE <raw>`) + column autocomplete chips, per-cell edit (dialog), batch staging (see below), row select/delete, query-timing in the status bar.
+- **Query editor** — monospace editor with history tab, current-query bar at the bottom, syntax-agnostic (single `statement.execute(sql)`; no client-side parsing), 30 s timeout, read-only guard. Write queries (INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/etc.) show a confirm dialog before execution. TopBar refresh re-executes only read queries.
+- **Inline data editor** — paginated `LIMIT/OFFSET` grid (limit presets 100/200/500/1000) with infinite scroll (`snapshotFlow` + `loadMore`), **quick WHERE filter** (`WHERE <raw>`) + column autocomplete chips, per-cell edit (dialog), batch staging (see below), row select/delete, query-timing in the status bar. Built-in SQL editor bar for custom queries — write queries show confirm dialog before execution.
 - **Batch write flow** — every write goes through **Save → Confirm → Execute**: edits/deletes are staged locally (red `errorContainer` highlight in the grid / bold for privileges) until the top-bar **Save** (Check icon) opens a multi-statement SQL preview; Execute commits sequentially with per-statement `currentQuery` updates.
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
 - **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
@@ -325,6 +325,26 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 `ConnectionProfileEntity.isReadonly` — **default at connect time**, persisted in Room via `updateProfile` / `saveProfile` (only from `ConnectionEditorScreen`).
 `ConnectionViewModel.sessionLocked: StateFlow<Boolean>` — **live session state**, initialized `profile.isReadonly` on `connect(profile)`, cleared on `disconnect()`, toggled by `setSessionLocked()` from `AppTopBar` Lock/Unlock (no DB write). `NavGraph` threads `sessionLocked` + `onToggleLock` to every destination. All write paths (query exec, `INSERT/UPDATE/DELETE`, `GRANT/REVOKE/CREATE/DROP/RENAME/ALTER USER`) early-return `Locked — unlock to write` when the passed `isLocked` snapshot is true.
 
+### Write query safety rules
+
+Every write query that mutates the server **must** follow these rules:
+
+1. **SQL preview before execution** — The user must see the exact SQL before it is sent. This is done via:
+   - `pendingSql` pattern: dialog shows SQL with "Execute" button (used by InsertRow, Grant/Revoke, Create/Drop/Rename User, Change Password, Create/Drop Index, Rename Table, Add/Drop Column).
+   - `showSaveConfirm` pattern: batch staging shows all pending SQL in `Confirm Write (N)` dialog (used by DataEditor staged edits/deletes, privilege detail batch changes).
+   - `showWriteConfirm` pattern: SQL editor bars detect write queries via `isWriteQuery()` and show a confirm dialog before executing (used by QueryEditorScreen Execute button and DataEditorScreen SQL editor bar).
+
+2. **Confirm button required** — Every write path must have an explicit user action (tap "Execute" in a dialog) before the query reaches the server. No write query should execute on a simple button tap without a confirm step.
+
+3. **Readonly lock enforcement** — When `isLocked = true`:
+   - All ViewModel write methods check `isLocked` and return `Locked — unlock to write` error.
+   - UI elements are disabled (`enabled = !isLocked`): FABs, Grant/Revoke buttons, checkboxes, save buttons.
+   - Dialogs early-return without executing (`if (isLocked) { dialog = false; return@... }`).
+   - The Execute button in QueryEditor is disabled for write queries when locked.
+   - TopBar refresh in QueryEditor skips write queries entirely (re-executes only SELECT/read queries).
+
+4. **TopBar refresh must not execute write queries** — The refresh button re-executes the current page's read queries. In QueryEditor, it skips if `isWriteQuery()` is true. In DataEditor, it calls `refreshData()` (SELECT only).
+
 ### Batch write staging (uniform pattern)
 
 All writes that mutate the server or local DB go **Save → Confirm (SQL preview) → Execute**. Staged state is held in the ViewModel until Save commits:
@@ -471,7 +491,7 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
    - Routes & VM wiring — [Navigation & screens](#navigation--screens) + `navigation/NavGraph.kt`
    - Privilege rules — [Key concepts — Privilege-filtered browsing](#key-concepts) + `data/PrivilegeResolver.kt` + `data/remote/model/Models.kt:PrivilegeSet`
    - Session semantics — [Key concepts — Session lock vs profile default](#key-concepts) + `data/local/entity/ConnectionProfileEntity.kt` + `ui/viewmodel/ConnectionViewModel.kt`
-   - Write flow — [Key concepts — Batch write staging](#key-concepts) + `ui/viewmodel/DataEditorViewModel.kt` + `ui/viewmodel/UserPermissionViewModel.kt` + `ui/screens/dataeditor/InlineDataEditorScreen.kt` + `ui/screens/user/UserPrivilegeDetailScreen.kt`
+   - Write flow — [Key concepts — Write query safety rules](#key-concepts) + [Key concepts — Batch write staging](#key-concepts) + `ui/viewmodel/DataEditorViewModel.kt` + `ui/viewmodel/UserPermissionViewModel.kt` + `ui/screens/dataeditor/InlineDataEditorScreen.kt` + `ui/screens/user/UserPrivilegeDetailScreen.kt`
    - Persistence & creds — `data/local/AppDatabase.kt` + `util/CredentialStore.kt` + `data/repository/ConnectionRepository.kt`
    - DB connectivity — `data/remote/MariaDbConnectionManager.kt` + `data/remote/SshTunnelManager.kt`
 2. **Prefer `Glob`/`Grep`** for discovery over reading every file. The [Project structure](#project-structure) map above is authoritative; treat `ui/screens/export` and `ui/screens/settings` as empty placeholders.
@@ -479,6 +499,7 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
 4. **Do not persist `sessionLocked` to Room** — it is `ConnectionViewModel` live state only; `ConnectionProfileEntity.isReadonly` is the persisted default.
 5. **Bottom bars**: `CurrentQueryBar` is the `Scaffold.bottomBar` contract on six browser/query/data/structure/index/user screens — do not duplicate `WindowInsets` handling there; `enableEdgeToEdge()` is in `MainActivity`.
 6. **Query log (`_currentQuery`)**: every ViewModel uses `MutableStateFlow<List<String>>`. Append each SQL (`_currentQuery.value += sql`) before `connectionManager.executeQuery()`. Reset the list on full refresh. This ensures no hidden queries — every query hitting the server must appear in `CurrentQueryBar`.
+7. **Write query safety**: every write query MUST show SQL preview + confirm dialog before execution. Use `isWriteQuery()` to detect write queries (checks for INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/RENAME/GRANT/REVOKE prefix). When `isLocked = true`, ALL write paths must return early with error. TopBar refresh must NEVER execute write queries.
 
 ---
 

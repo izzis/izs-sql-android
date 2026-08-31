@@ -687,6 +687,14 @@ class DataEditorViewModel @Inject constructor(
         return "DELETE FROM `$database`.`$table` WHERE `$pkColumn` IN (${pkValues.joinToString(", ")})"
     }
 
+    fun isWriteQuery(): Boolean {
+        val q = _query.value.trim().uppercase()
+        return q.startsWith("INSERT") || q.startsWith("UPDATE") || q.startsWith("DELETE") ||
+                q.startsWith("ALTER") || q.startsWith("DROP") || q.startsWith("CREATE") ||
+                q.startsWith("TRUNCATE") || q.startsWith("RENAME") || q.startsWith("GRANT") ||
+                q.startsWith("REVOKE")
+    }
+
     private fun formatSqlValue(value: Any?): String {
         if (value == null) return "NULL"
         return when (value) {

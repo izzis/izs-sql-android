@@ -104,6 +104,7 @@ fun InlineDataEditorScreen(
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showSaveConfirm by remember { mutableStateOf(false) }
     var showQueryEditor by remember { mutableStateOf(false) }
+    var showWriteConfirm by remember { mutableStateOf(false) }
     var editableQuery by remember { mutableStateOf("") }
     val pendingEdits by viewModel.pendingEdits.collectAsState()
     val pendingDeletes by viewModel.pendingDeletes.collectAsState()
@@ -170,7 +171,11 @@ fun InlineDataEditorScreen(
                         return@SqlEditorBar
                     }
                     viewModel.setQuery(editableQuery)
-                    viewModel.executeCustomQuery()
+                    if (viewModel.isWriteQuery()) {
+                        showWriteConfirm = true
+                    } else {
+                        viewModel.executeCustomQuery()
+                    }
                 },
                 isExpanded = showQueryEditor,
                 onToggle = { showQueryEditor = !showQueryEditor }
@@ -334,6 +339,40 @@ fun InlineDataEditorScreen(
                 TextButton(onClick = { showSaveConfirm = false; viewModel.commitPending(database, table, isLocked = isLocked) }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showSaveConfirm = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showWriteConfirm) {
+        val sql = viewModel.query.collectAsState().value
+        val clipboard = LocalClipboardManager.current
+        val ctx = LocalContext.current
+        AlertDialog(
+            onDismissRequest = { showWriteConfirm = false },
+            title = { Text("Confirm Write Query") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("This query modifies data. Do you want to execute it?", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Query:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = sql,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                            .padding(8.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(modifier = Modifier.width(4.dp)); Text("Copy")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showWriteConfirm = false; viewModel.executeCustomQuery() }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showWriteConfirm = false }) { Text("Cancel") } }
         )
     }
 }

@@ -90,7 +90,11 @@ fun QueryEditorScreen(
                 title = "Query Editor",
                 subtitle = "$database.$table",
                 containerColor = topBarColor,
-                onRefresh = { viewModel.executeQuery() },
+                onRefresh = {
+                    if (!viewModel.isWriteQuery()) {
+                        viewModel.executeQuery(isLocked = isLocked)
+                    }
+                },
                 isRefreshing = isExecuting,
                 isLocked = isLocked,
                 showLock = true,
