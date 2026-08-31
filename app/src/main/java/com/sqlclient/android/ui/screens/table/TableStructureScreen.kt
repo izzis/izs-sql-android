@@ -75,8 +75,10 @@ fun TableStructureScreen(
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
+    onData: (() -> Unit)? = null,
     onReconnect: (() -> Unit)? = null,
-    isReconnecting: Boolean = false
+    isReconnecting: Boolean = false,
+    topBarColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary
 ) {
     val columns by viewModel.columns.collectAsState()
     val createTable by viewModel.createTable.collectAsState()
@@ -122,7 +124,7 @@ fun TableStructureScreen(
             AppTopBar(
                 title = table,
                 subtitle = database,
-                containerColor = MaterialTheme.colorScheme.primary,
+                containerColor = topBarColor,
                 onRefresh = {
                     viewModel.loadStructure(database, table)
                     indexViewModel.loadIndexes(database, table)
@@ -132,6 +134,7 @@ fun TableStructureScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
+                onData = onData,
                 onReconnect = onReconnect,
                 isReconnecting = isReconnecting
             )

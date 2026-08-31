@@ -25,14 +25,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -244,6 +250,12 @@ fun DatabaseBrowserScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Icon(
+                                    imageVector = Icons.Default.Storage,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                                 Text(
                                     text = db,
                                     style = MaterialTheme.typography.titleMedium,
@@ -354,7 +366,7 @@ fun DatabaseBrowserScreen(
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                                                        .padding(vertical = 2.dp, horizontal = 4.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     IconButton(
@@ -374,10 +386,15 @@ fun DatabaseBrowserScreen(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                     ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.TableChart,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.secondary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
                                                         Text(
                                                             text = table,
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            fontWeight = FontWeight.Medium,
+                                                            style = MaterialTheme.typography.bodyLarge,
                                                             modifier = Modifier.weight(1f)
                                                         )
                                                         if (tableSize != null) {
@@ -389,14 +406,17 @@ fun DatabaseBrowserScreen(
                                                         }
                                                     }
                                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        androidx.compose.material3.TextButton(onClick = { onOpenQuery(selectedDatabase!!, table) }) { Text("Query", style = MaterialTheme.typography.labelSmall) }
-                                                        androidx.compose.material3.TextButton(onClick = { onOpenDataEditor(selectedDatabase!!, table) }) { Text("Data", style = MaterialTheme.typography.labelSmall) }
-                                                        androidx.compose.material3.TextButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }) { Text("Structure", style = MaterialTheme.typography.labelSmall) }
+                                                        IconButton(onClick = { onOpenQuery(selectedDatabase!!, table) }, modifier = Modifier.size(32.dp)) {
+                                                            Icon(Icons.Default.Code, contentDescription = "Query", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                                        }
+                                                        IconButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }, modifier = Modifier.size(32.dp)) {
+                                                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Structure", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
+                                                        }
                                                     }
                                                 }
                                                 if (isTableExpanded) {
                                                     Column(modifier = Modifier.padding(start = 16.dp)) {
-                                                        // Columns — lazy, show loading if null
+                                                        // Columns
                                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                                                             Text("Columns", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                                                             if (tableColumns == null) {
@@ -407,7 +427,14 @@ fun DatabaseBrowserScreen(
                                                             }
                                                         }
                                                         tableColumns?.forEach { col ->
-                                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                                Icon(
+                                                                    imageVector = if (col.isPrimaryKey) Icons.Default.Key else Icons.Default.ViewColumn,
+                                                                    contentDescription = null,
+                                                                    tint = if (col.isPrimaryKey) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    modifier = Modifier.size(12.dp)
+                                                                )
+                                                                Spacer(modifier = Modifier.width(6.dp))
                                                                 Text(col.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                                                 Text(col.type, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                                 if (col.isPrimaryKey) {
@@ -416,7 +443,11 @@ fun DatabaseBrowserScreen(
                                                                 }
                                                             }
                                                         }
-                                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+
+                                                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                                                        // Indexes
+                                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                                                             Text("Indexes", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                                                             if (tableIndexes == null) {
                                                                 Spacer(modifier = Modifier.width(8.dp))
@@ -426,15 +457,28 @@ fun DatabaseBrowserScreen(
                                                             }
                                                         }
                                                         tableIndexes?.forEach { idx ->
-                                                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                                Text(idx.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                                                Text(idx.columns.joinToString(", "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp, horizontal = 4.dp)) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    Icon(
+                                                                        imageVector = if (idx.name == "PRIMARY") Icons.Default.Key else Icons.Default.Menu,
+                                                                        contentDescription = null,
+                                                                        tint = if (idx.name == "PRIMARY") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                        modifier = Modifier.size(12.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                                    Text(idx.name, style = MaterialTheme.typography.bodySmall, fontWeight = if (idx.name == "PRIMARY") FontWeight.Bold else FontWeight.Normal)
+                                                                    if (idx.isUnique) {
+                                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                                        Text("UNIQUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                                                                    }
+                                                                }
+                                                                Text(
+                                                                    text = "→ ${idx.columns.joinToString(", ")}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                                    modifier = Modifier.padding(start = 24.dp, top = 1.dp)
+                                                                )
                                                             }
-                                                        }
-                                                        Spacer(modifier = Modifier.height(4.dp))
-                                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                            androidx.compose.material3.OutlinedButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }, modifier = Modifier.height(28.dp)) { Text("Structure", style = MaterialTheme.typography.labelSmall) }
-                                                            androidx.compose.material3.OutlinedButton(onClick = { viewModel.refreshTableSizes(selectedDatabase!!) }, modifier = Modifier.height(28.dp)) { Text("Size", style = MaterialTheme.typography.labelSmall) }
                                                         }
                                                     }
                                                 }

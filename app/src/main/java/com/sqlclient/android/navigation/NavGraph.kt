@@ -185,6 +185,12 @@ fun NavGraph(themeManager: ThemeManager) {
             val table = backStackEntry.arguments?.getString("table") ?: return@composable
             val tableStructureViewModel: TableStructureViewModel = hiltViewModel()
             val structureIndexViewModel: IndexManagementViewModel = hiltViewModel()
+            val currentProfile = (connectionViewModel.connectionState.value as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
+            val topBarColor = try {
+                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(currentProfile?.color ?: "#6200EE"))
+            } catch (_: Exception) {
+                androidx.compose.ui.graphics.Color(0xFF6200EE)
+            }
             TableStructureScreen(
                 viewModel = tableStructureViewModel,
                 indexViewModel = structureIndexViewModel,
@@ -193,8 +199,10 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
+                onData = { navController.navigate("data_editor/$database/$table") },
                 onReconnect = { connectionViewModel.reconnect() },
-                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
+                topBarColor = topBarColor
             )
         }
 
@@ -273,6 +281,12 @@ fun NavGraph(themeManager: ThemeManager) {
             val database = backStackEntry.arguments?.getString("database") ?: return@composable
             val table = backStackEntry.arguments?.getString("table") ?: return@composable
             val indexManagementViewModel: IndexManagementViewModel = hiltViewModel()
+            val indexManagementProfile = (connectionViewModel.connectionState.value as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
+            val indexManagementTopBarColor = try {
+                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(indexManagementProfile?.color ?: "#6200EE"))
+            } catch (_: Exception) {
+                androidx.compose.ui.graphics.Color(0xFF6200EE)
+            }
             IndexManagementScreen(
                 viewModel = indexManagementViewModel,
                 database = database,
@@ -281,7 +295,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
                 onReconnect = { connectionViewModel.reconnect() },
-                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
+                topBarColor = indexManagementTopBarColor
             )
         }
     }

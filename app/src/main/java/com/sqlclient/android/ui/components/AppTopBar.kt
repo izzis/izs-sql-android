@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -46,6 +47,7 @@ fun AppTopBar(
     showRefresh: Boolean = true,
     onSave: (() -> Unit)? = null,
     onStructure: (() -> Unit)? = null,
+    onData: (() -> Unit)? = null,
     onBackOrDisconnect: (() -> Unit)? = null,
     onReconnect: (() -> Unit)? = null,
     isReconnecting: Boolean = false
@@ -102,6 +104,11 @@ fun AppTopBar(
             }
         },
         actions = {
+            if (onData != null) {
+                IconButton(onClick = onData) {
+                    Icon(Icons.Default.ViewColumn, contentDescription = "Data", tint = Color.White)
+                }
+            }
             if (onStructure != null) {
                 IconButton(onClick = onStructure) {
                     Icon(Icons.Default.TableChart, contentDescription = "Structure", tint = Color.White)

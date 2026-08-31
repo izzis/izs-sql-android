@@ -17,10 +17,12 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -125,7 +127,7 @@ fun DatabaseTree(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                        .padding(vertical = 4.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     androidx.compose.material3.IconButton(
@@ -156,8 +158,7 @@ fun DatabaseTree(
 
                         Text(
                             text = database.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -241,7 +242,7 @@ fun DatabaseTree(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clickable { onTableDataClick(database.name, table) }
-                                                .padding(vertical = 6.dp),
+                                                .padding(vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
@@ -255,7 +256,7 @@ fun DatabaseTree(
 
                                             Text(
                                                 text = table,
-                                                style = MaterialTheme.typography.bodySmall,
+                                                style = MaterialTheme.typography.bodyLarge,
                                                 modifier = Modifier.weight(1f),
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
@@ -289,7 +290,7 @@ fun DatabaseTree(
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Icon(
-                                                            imageVector = if (column.isPrimaryKey) Icons.Default.Key else Icons.Default.TableChart,
+                                                            imageVector = if (column.isPrimaryKey) Icons.Default.Key else Icons.Default.ViewColumn,
                                                             contentDescription = null,
                                                             tint = if (column.isPrimaryKey) {
                                                                 MaterialTheme.colorScheme.tertiary
@@ -326,34 +327,43 @@ fun DatabaseTree(
                                                 isLoading = tableIndexList == null
                                             ) {
                                                 tableIndexList?.forEach { index ->
-                                                    Row(
+                                                    Column(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .padding(vertical = 2.dp, horizontal = 4.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
+                                                            .padding(vertical = 2.dp, horizontal = 4.dp)
                                                     ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
                                                         Icon(
-                                                            imageVector = if (index.name == "PRIMARY") Icons.Default.Key else Icons.Default.Folder,
+                                                            imageVector = if (index.name == "PRIMARY") Icons.Default.Key else Icons.Default.Menu,
                                                             contentDescription = null,
-                                                            tint = if (index.name == "PRIMARY") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            modifier = Modifier.size(12.dp)
-                                                        )
+                                                                tint = if (index.name == "PRIMARY") MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(12.dp)
+                                                            )
 
-                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                            Spacer(modifier = Modifier.width(6.dp))
 
+                                                            Text(
+                                                                text = index.name,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = if (index.name == "PRIMARY") FontWeight.Bold else FontWeight.Normal
+                                                            )
+
+                                                            if (index.isUnique) {
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                Text(
+                                                                    text = "UNIQUE",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.tertiary
+                                                                )
+                                                            }
+                                                        }
                                                         Text(
-                                                            text = index.name,
+                                                            text = "→ ${index.columns.joinToString(", ")}",
                                                             style = MaterialTheme.typography.labelSmall,
-                                                            fontWeight = if (index.name == "PRIMARY") FontWeight.Bold else FontWeight.Normal,
-                                                            modifier = Modifier.weight(1f),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-
-                                                        Text(
-                                                            text = index.columns.joinToString(", "),
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                            modifier = Modifier.padding(start = 18.dp, top = 1.dp)
                                                         )
                                                     }
                                                 }

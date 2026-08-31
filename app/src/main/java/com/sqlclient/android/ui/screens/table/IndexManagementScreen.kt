@@ -81,7 +81,8 @@ fun IndexManagementScreen(
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
     onReconnect: (() -> Unit)? = null,
-    isReconnecting: Boolean = false
+    isReconnecting: Boolean = false,
+    topBarColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary
 ) {
     val indexes by viewModel.indexes.collectAsState()
     val columns by viewModel.columns.collectAsState()
@@ -124,7 +125,7 @@ fun IndexManagementScreen(
             AppTopBar(
                 title = table,
                 subtitle = database,
-                containerColor = MaterialTheme.colorScheme.primary,
+                containerColor = topBarColor,
                 onRefresh = { viewModel.loadIndexes(database, table) },
                 isRefreshing = isLoading,
                 isLocked = isLocked,
