@@ -80,7 +80,8 @@ fun InlineDataEditorScreen(
     table: String,
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenStructure: (() -> Unit)? = null
 ) {
     val columns by viewModel.columns.collectAsState()
     val rows by viewModel.rows.collectAsState()
@@ -148,6 +149,7 @@ fun InlineDataEditorScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
+                onStructure = onOpenStructure,
                 onSave = if (hasPending) ({ showSaveConfirm = true }) else null
             )
         },

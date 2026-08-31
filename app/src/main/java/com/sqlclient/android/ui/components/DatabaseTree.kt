@@ -51,8 +51,10 @@ fun DatabaseTree(
     searchQuery: String,
     users: List<UserInfo>,
     onDatabaseClick: (String) -> Unit,
+    onDatabaseOpen: (String) -> Unit = {},
     onTableClick: (String, String) -> Unit,
     onTableSelect: (String, String) -> Unit,
+    onTableDataClick: (String, String) -> Unit = { _, _ -> },
     onRefreshDatabase: (String) -> Unit = {},
     onRefreshSizes: (String) -> Unit = {},
     onUsersClick: () -> Unit,
@@ -123,36 +125,44 @@ fun DatabaseTree(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onDatabaseClick(database.name) }
                         .padding(vertical = 6.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (isExpanded) "Collapse" else "Expand",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    androidx.compose.material3.IconButton(
+                        onClick = { onDatabaseClick(database.name) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Row(
+                        modifier = Modifier.weight(1f).clickable { onDatabaseOpen(database.name) }
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
 
-                    Icon(
-                        imageVector = Icons.Default.Storage,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                        Spacer(modifier = Modifier.width(6.dp))
 
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Text(
-                        text = database.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                        Text(
+                            text = database.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
                     if (loadingDatabases.contains(database.name)) {
                         CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
@@ -230,7 +240,7 @@ fun DatabaseTree(
                                         Row(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .clickable { onTableSelect(database.name, table) }
+                                                .clickable { onTableDataClick(database.name, table) }
                                                 .padding(vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {

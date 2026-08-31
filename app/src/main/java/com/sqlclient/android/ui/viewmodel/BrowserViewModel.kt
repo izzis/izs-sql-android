@@ -164,9 +164,14 @@ class BrowserViewModel @Inject constructor(
     fun selectDatabase(database: String) {
         _selectedDatabase.value = database
         _tableSearchQuery.value = ""
-        // Lazy load tables for this DB only if not cached; otherwise use cache (back preserves cache)
         if (!_tables.value.containsKey(database)) {
             requestTables(database)
+        } else {
+            // Tables cached — lazily populate sizes once per DB, then keep in cache for back
+            val keys = _tables.value[database] ?: emptyList()
+            if (keys.isNotEmpty() && keys.none { _tableSizes.value.containsKey("$database.$it") }) {
+                refreshTableSizes(database)
+            }
         }
     }
 
@@ -180,9 +185,12 @@ class BrowserViewModel @Inject constructor(
                 when (val result = connectionManager.executeQuery("SHOW TABLES IN `$database`")) {
                     is QueryResult.Success -> {
                         var tableNames = result.rows.map { it[0].toString() }
-                        // Privilege filter per-table
                         tableNames = privilegeResolver.filterTables(database, tableNames, _privilegeSet.value)
                         _tables.value = _tables.value + (database to tableNames)
+                        // Best-effort: populate sizes once per DB, then reuse cache on back
+                        if (tableNames.isNotEmpty() && tableNames.none { _tableSizes.value.containsKey("$database.$it") }) {
+                            refreshTableSizes(database)
+                        }
                     }
                     is QueryResult.Error -> {
                         val msg = result.message

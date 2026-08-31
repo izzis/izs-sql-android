@@ -290,8 +290,10 @@ fun DatabaseBrowserScreen(
                                     searchQuery = searchQuery,
                                     users = users,
                                     onDatabaseClick = { db ->
-                                        // Expand toggles only (no auto-load); refresh explicitly via button
                                         viewModel.toggleDatabase(db)
+                                    },
+                                    onDatabaseOpen = { db ->
+                                        viewModel.selectDatabase(db)
                                     },
                                     onRefreshDatabase = { viewModel.refreshDatabase(it) },
                                     onRefreshSizes = { viewModel.refreshTableSizes(it) },
@@ -299,6 +301,9 @@ fun DatabaseBrowserScreen(
                                     onTableSelect = { db, table ->
                                         viewModel.selectTable(db, table)
                                         viewModel.selectDatabase(db)
+                                    },
+                                    onTableDataClick = { db, table ->
+                                        onOpenDataEditor(db, table)
                                     },
                                     onUsersClick = {
                                         viewModel.setActivePanel(BrowserPanel.USERS)
@@ -345,40 +350,44 @@ fun DatabaseBrowserScreen(
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .clickable {
-                                                            viewModel.toggleTable(selectedDatabase!!, table)
-                                                            viewModel.selectTable(selectedDatabase!!, table)
-                                                        }
-                                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                                        .padding(vertical = 4.dp, horizontal = 4.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Icon(
-                                                        imageVector = if (isTableExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                        contentDescription = if (isTableExpanded) "Collapse" else "Expand",
-                                                        modifier = Modifier.size(20.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    IconButton(
+                                                        onClick = { viewModel.toggleTable(selectedDatabase!!, table) },
+                                                        modifier = Modifier.size(24.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isTableExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                            contentDescription = if (isTableExpanded) "Collapse" else "Expand",
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                    Row(
+                                                        modifier = Modifier.weight(1f).clickable { onOpenDataEditor(selectedDatabase!!, table) }
+                                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = table,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            fontWeight = FontWeight.Medium,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        if (tableSize != null) {
                                                             Text(
-                                                                text = table,
-                                                                style = MaterialTheme.typography.bodyMedium,
-                                                                fontWeight = FontWeight.Medium,
-                                                                modifier = Modifier.weight(1f)
+                                                                text = tableSize,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                                             )
-                                                            if (tableSize != null) {
-                                                                Text(
-                                                                    text = tableSize,
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                                )
-                                                            }
                                                         }
                                                     }
                                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                         androidx.compose.material3.TextButton(onClick = { onOpenQuery(selectedDatabase!!, table) }) { Text("Query", style = MaterialTheme.typography.labelSmall) }
                                                         androidx.compose.material3.TextButton(onClick = { onOpenDataEditor(selectedDatabase!!, table) }) { Text("Data", style = MaterialTheme.typography.labelSmall) }
+                                                        androidx.compose.material3.TextButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }) { Text("Structure", style = MaterialTheme.typography.labelSmall) }
                                                     }
                                                 }
                                                 if (isTableExpanded) {
@@ -420,7 +429,8 @@ fun DatabaseBrowserScreen(
                                                         }
                                                         Spacer(modifier = Modifier.height(4.dp))
                                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                            androidx.compose.material3.OutlinedButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }) { Text("Structure") }
+                                                            androidx.compose.material3.OutlinedButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }, modifier = Modifier.height(28.dp)) { Text("Structure", style = MaterialTheme.typography.labelSmall) }
+                                                            androidx.compose.material3.OutlinedButton(onClick = { viewModel.refreshTableSizes(selectedDatabase!!) }, modifier = Modifier.height(28.dp)) { Text("Size", style = MaterialTheme.typography.labelSmall) }
                                                         }
                                                     }
                                                 }

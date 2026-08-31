@@ -187,8 +187,10 @@ fun NavGraph(themeManager: ThemeManager) {
             val database = backStackEntry.arguments?.getString("database") ?: return@composable
             val table = backStackEntry.arguments?.getString("table") ?: return@composable
             val tableStructureViewModel: TableStructureViewModel = hiltViewModel()
+            val structureIndexViewModel: IndexManagementViewModel = hiltViewModel()
             TableStructureScreen(
                 viewModel = tableStructureViewModel,
+                indexViewModel = structureIndexViewModel,
                 database = database,
                 table = table,
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
@@ -218,7 +220,8 @@ fun NavGraph(themeManager: ThemeManager) {
                     table = table,
                     isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                     onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onOpenStructure = { navController.navigate("structure/$database/$table") }
                 )
             }
         }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ fun AppTopBar(
     showLock: Boolean = true,
     showRefresh: Boolean = true,
     onSave: (() -> Unit)? = null,
+    onStructure: (() -> Unit)? = null,
     onBackOrDisconnect: (() -> Unit)? = null
 ) {
     // Backward compat: map old param to new
@@ -103,6 +105,11 @@ fun AppTopBar(
             }
         },
         actions = {
+            if (onStructure != null) {
+                IconButton(onClick = onStructure) {
+                    Icon(Icons.Default.TableChart, contentDescription = "Structure", tint = Color.White)
+                }
+            }
             if (onSave != null) {
                 IconButton(onClick = onSave) {
                     Icon(Icons.Default.Check, contentDescription = "Save", tint = Color.White)
