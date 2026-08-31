@@ -130,7 +130,7 @@ fun UserManagementScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(query = currentQuery) },
+        bottomBar = { CurrentQueryBar(queries = currentQuery) },
         floatingActionButton = {
             if (selectedTab == 0) {
                 ExtendedFloatingActionButton(

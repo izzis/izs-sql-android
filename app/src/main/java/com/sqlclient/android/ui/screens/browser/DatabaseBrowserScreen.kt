@@ -223,9 +223,9 @@ fun DatabaseBrowserScreen(
                 val browserQuery = when (activePanel) {
                     BrowserPanel.TABLE_INFO -> currentQuery
                     BrowserPanel.USERS -> userCurrentQuery
-                    BrowserPanel.HISTORY -> ""
+                    BrowserPanel.HISTORY -> emptyList()
                 }
-                CurrentQueryBar(query = browserQuery)
+                CurrentQueryBar(queries = browserQuery)
             }
         ) { paddingValues ->
             when (activePanel) {

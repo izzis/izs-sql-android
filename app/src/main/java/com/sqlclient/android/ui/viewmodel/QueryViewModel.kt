@@ -37,8 +37,8 @@ class QueryViewModel @Inject constructor(
 
     private var nextTabId = 2L
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
+    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
 
     fun setCurrentProfileId(profileId: Long) {
         _currentProfileId.value = profileId
@@ -82,7 +82,7 @@ class QueryViewModel @Inject constructor(
         if (query.isBlank()) return
         if (isLocked && isWriteQuery()) { _queryResult.value = QueryResultState.Error("Locked \u2014 unlock to write"); return }
 
-        _currentQuery.value = query
+        _currentQuery.value = listOf(query)
         viewModelScope.launch {
             _isExecuting.value = true
             _queryResult.value = QueryResultState.Loading
@@ -148,7 +148,7 @@ class QueryViewModel @Inject constructor(
 
     fun setInitialQuery(database: String, table: String) {
         val query = "SELECT * FROM `$database`.`$table`"
-        _currentQuery.value = query
+        _currentQuery.value = listOf(query)
         _queryTabs.value = listOf(QueryTab(id = 1, query = query))
         _activeTabId.value = 1
     }

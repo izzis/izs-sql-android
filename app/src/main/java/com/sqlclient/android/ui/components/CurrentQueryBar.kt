@@ -45,14 +45,15 @@ import android.widget.Toast
  * Bottom bar shown on every page that displays the "current query" for that page.
  * Collapsed by default (single-line pill); tap arrow to expand to full selectable block.
  * Show/hide is per-page via the [expanded] state owned by the caller (rememberSaveable).
- * Pass empty string to hide the bar entirely (e.g. no current query yet).
+ * Pass empty list to hide the bar entirely (e.g. no current query yet).
  */
 @Composable
 fun CurrentQueryBar(
-    query: String,
+    queries: List<String>,
     modifier: Modifier = Modifier,
 ) {
-    if (query.isBlank()) return
+    if (queries.isEmpty()) return
+    val query = queries.joinToString(";\n")
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current

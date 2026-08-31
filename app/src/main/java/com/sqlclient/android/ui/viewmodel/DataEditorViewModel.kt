@@ -61,8 +61,8 @@ class DataEditorViewModel @Inject constructor(
     private val _hasLoaded = MutableStateFlow(false)
     val hasLoaded: StateFlow<Boolean> = _hasLoaded.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
+    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
 
     // Quick WHERE filter
     private val _whereInput = MutableStateFlow("")
@@ -133,7 +133,7 @@ class DataEditorViewModel @Inject constructor(
 
     private fun refreshCurrentQueryPreview() {
         val sqls = buildPendingSqls(currentDatabase, currentTable)
-        _currentQuery.value = if (sqls.isNotEmpty()) sqls.joinToString(";\n") else _query.value
+        _currentQuery.value = if (sqls.isNotEmpty()) sqls else listOf(_query.value)
     }
 
     private fun formatWhere(pairs: List<Pair<String, Any?>>): String {
@@ -195,7 +195,7 @@ class DataEditorViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 for (sql in sqls) {
-                    _currentQuery.value = sql
+                    _currentQuery.value = _currentQuery.value + sql
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
                         else -> {}
@@ -237,7 +237,7 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         val sql = buildBrowseSql()
         _query.value = sql
-        _currentQuery.value = sql
+        _currentQuery.value = _currentQuery.value + sql
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -272,7 +272,7 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         val sql = buildBrowseSql()
         _query.value = sql
-        _currentQuery.value = sql
+        _currentQuery.value = _currentQuery.value + sql
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -305,9 +305,9 @@ class DataEditorViewModel @Inject constructor(
             currentOffset = 0
             _selectedRows.value = emptySet()
             _rows.value = emptyList()
-            val sql = buildBrowseSql()
-            _query.value = sql
-            _currentQuery.value = sql
+        val sql = buildBrowseSql()
+        _query.value = sql
+        _currentQuery.value = _currentQuery.value + sql
             viewModelScope.launch {
                 _isLoading.value = true
                 _error.value = null
@@ -355,7 +355,7 @@ class DataEditorViewModel @Inject constructor(
 
         val sql = "SELECT * FROM `$database`.`$table` LIMIT ${_dataLimit.value}"
         _query.value = sql
-        _currentQuery.value = sql
+        _currentQuery.value = listOf(sql)
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -399,7 +399,7 @@ class DataEditorViewModel @Inject constructor(
         currentOffset = 0
         _selectedRows.value = emptySet()
         _rows.value = emptyList()
-        _currentQuery.value = sql
+        _currentQuery.value = listOf(sql)
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -412,7 +412,7 @@ class DataEditorViewModel @Inject constructor(
                 } else {
                     sql
                 }
-                _currentQuery.value = limitedSql
+                _currentQuery.value = listOf(limitedSql)
                 executeWithLimit(limitedSql)
             } catch (e: Exception) {
                 _error.value = "Query failed: ${e.message}"
@@ -444,7 +444,7 @@ class DataEditorViewModel @Inject constructor(
                         "$baseQuery LIMIT $limit OFFSET $currentOffset"
                     }
                 }
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _rows.value = _rows.value + result.rows
@@ -496,6 +496,7 @@ class DataEditorViewModel @Inject constructor(
         pkColumns = emptyList()
 
         val sql = "SHOW FULL COLUMNS FROM `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + sql
         when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 val pks = mutableListOf<Pair<Int, String>>()
@@ -532,7 +533,7 @@ class DataEditorViewModel @Inject constructor(
                 val pkStr = formatSqlValue(pkValue)
                 val newValStr = formatSqlValue(newValue)
                 val sql = "UPDATE `$database`.`$table` SET `$column` = $newValStr WHERE `$pkColumn` = $pkStr"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Cell updated"
@@ -555,7 +556,7 @@ class DataEditorViewModel @Inject constructor(
                 val columns = values.keys.joinToString(", ") { "`$it`" }
                 val vals = values.values.joinToString(", ") { formatSqlValue(it) }
                 val sql = "INSERT INTO `$database`.`$table` ($columns) VALUES ($vals)"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Row inserted"
@@ -577,7 +578,7 @@ class DataEditorViewModel @Inject constructor(
             try {
                 val pkStr = formatSqlValue(pkValue)
                 val sql = "DELETE FROM `$database`.`$table` WHERE `$pkColumn` = $pkStr"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Row deleted"
@@ -607,7 +608,7 @@ class DataEditorViewModel @Inject constructor(
                 if (pkValues.isEmpty()) return@launch
 
                 val sql = "DELETE FROM `$database`.`$table` WHERE `$pkColumn` IN (${pkValues.joinToString(", ")})"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "${selected.size} row(s) deleted"

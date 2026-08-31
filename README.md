@@ -40,7 +40,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
 - **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
 - **Session lock vs profile default** — `ConnectionProfileEntity.isReadonly` is the **default on connect**; `ConnectionViewModel.sessionLocked` is the **live session lock** toggled from the top bar (does not persist to Room) and wired to every route via `NavGraph`.
-- **Current query bar** — `CurrentQueryBar` bottom bar shows `currentQuery` for the active page (collapsible), copy-to-clipboard, monospace `SelectionContainer`.
+- **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = 80-char preview of last query, expanded = full monospace list with copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
 
 ---
@@ -314,10 +314,11 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 ### Current query bar
 
-`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `QueryEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Single contract:
+`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `QueryEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
 
-- `currentQuery: String` (per-page; `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`).
-- Collapsed = 80-char preview, expanded = selectable monospace + copy.
+- `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = 80-char preview of last query; expanded = full `;\n`-joined list, selectable monospace + copy.
+- `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`.
+- **No hidden queries**: every `connectionManager.executeQuery` call (including background reads like `SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, `information_schema` size queries, `SHOW GRANTS`, and `FLUSH PRIVILEGES`) is reflected in the list. This ensures the query log matches the server's `general_log`.
 
 ### Session lock vs profile default
 
@@ -328,14 +329,14 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 All writes that mutate the server or local DB go **Save → Confirm (SQL preview) → Execute**. Staged state is held in the ViewModel until Save commits:
 
-- **Data editor** — `DataEditorViewModel.StagedEdit` + `_pendingEdits: Map<Pair<rowIndex,colIndex>, StagedEdit>` + `_pendingDeletes: Set<rowIndex>`; grouping `by rowIndex → 1 UPDATE per row` + single `DELETE IN`. UI: cell dialog `Cancel/OK` stages locally (red `errorContainer` highlight + staged value), row delete stages; top-bar `Check` (Save) shows `Confirm Write (N)` with the full `;\n`-joined SQL; Execute → `commitPending(...)` (per-statement `currentQuery` + sequential `executeQuery`, stop on first error), then reload.
+- **Data editor** — `DataEditorViewModel.StagedEdit` + `_pendingEdits: Map<Pair<rowIndex,colIndex>, StagedEdit>` + `_pendingDeletes: Set<rowIndex>`; grouping `by rowIndex → 1 UPDATE per row` + single `DELETE IN`. UI: cell dialog `Cancel/OK` stages locally (red `errorContainer` highlight + staged value), row delete stages; top-bar `Check` (Save) shows `Confirm Write (N)` with the full `;\n`-joined SQL; Execute → `commitPending(...)` (per-statement `currentQuery` append + sequential `executeQuery`, stop on first error), then reload.
 - **Privilege detail** — `UserPermissionViewModel._pendingPrivChanges: Map<"PRIV@onKey", Boolean>` (desired vs `onToPrivs`), `stagePrivToggle` / `buildPendingPrivSqls` / `commitPendingPrivs` (per-`GRANT/REVOKE` + `FLUSH PRIVILEGES` + `loadGrants`). UI: `effectiveChecked()` layer over `hasPrivOnTarget()`, DB/table bold via `effectiveHasAnyPriv()` (any pending `true` makes its `*.*`/`db.*`/`db.table` bold), banner `N pending change(s) | Discard | Save`, `Confirm Write (N)` with `GRANT/REVOKE …` statements.
 
 `IndexManagement` / `QueryEditor` custom SQL follow the same rule via `pendingSql/pendingAction + Confirm Write` where applicable.
 
 ### Query execution
 
-`MariaDbConnectionManager.executeQuery(sql): QueryResult` (`Success(columns, rows)` | `UpdateSuccess` | `Error(message)`) — single JDBC `Connection`, `Properties { connectTimeout 8000, socketTimeout 30000, useSSL/trustServerCertificate, queryTimeout 30s }`, `StrictHostKeyChecking=no` for SSH. `_currentQuery`/`_query`/`_error`/`_lastQueryDurationMs` are the ViewModel contracts driving `CurrentQueryBar`, error Snackbars and the status bar.
+`MariaDbConnectionManager.executeQuery(sql): QueryResult` (`Success(columns, rows)` | `UpdateSuccess` | `Error(message)`) — single JDBC `Connection`, `Properties { connectTimeout 8000, socketTimeout 30000, useSSL/trustServerCertificate, queryTimeout 30s }`, `StrictHostKeyChecking=no` for SSH. `_currentQuery: MutableStateFlow<List<String>>` / `_query` / `_error` / `_lastQueryDurationMs` are the ViewModel contracts driving `CurrentQueryBar` (query log), error Snackbars and the status bar. Every query that hits the server must be appended to `_currentQuery` before execution.
 
 ---
 
@@ -430,7 +431,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 | `JSchException: Auth fail` on SSH | Password/key/passphrase mismatch | Check password vs key mode; pass `sshPassphrase` when the key is encrypted; verify `sshHost:22` reachability with `Test SSH` |
 | `Password not found. Save the connection first.` on connect | Credentials not yet saved to `CredentialStore` | Tap **Save** in the editor before **Connect** (or re-save after clearing app data) |
 | Writes still execute while locked | Route not wired to `sessionLocked` | `NavGraph` must pass `isLocked = sessionLocked.collectAsState().value` + `onToggleLock = { setSessionLocked(!value) }` to that screen's `AppTopBar(showLock=true, …)` |
-| Writes not appearing in `CurrentQueryBar` | Write VM missed `_currentQuery.value = sql` | Every write path should set `_currentQuery` before `executeQuery`, even for staged preview rerenders |
+| Writes not appearing in `CurrentQueryBar` | Write VM missed `_currentQuery.value += sql` | Every write/read path must append to `_currentQuery` before `executeQuery`, including background reads (`SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, `information_schema`, `SHOW GRANTS`, `FLUSH PRIVILEGES`) |
 | `UPDATE ... WHERE pk = ...` affects 0 rows | Wrong `pkColumnIndex` / `autoIncrementColumn` | `loadColumnInfo` parses `SHOW FULL COLUMNS FROM` — ensure the table has a PK / `auto_increment` |
 
 ---
@@ -477,6 +478,7 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
 3. **Batch any writes** you stage through the `Save → Confirm → Execute` preview — that is the expected UX pattern after the current refactor (see `DataEditorViewModel.buildPendingSqls/commitPending`).
 4. **Do not persist `sessionLocked` to Room** — it is `ConnectionViewModel` live state only; `ConnectionProfileEntity.isReadonly` is the persisted default.
 5. **Bottom bars**: `CurrentQueryBar` is the `Scaffold.bottomBar` contract on six browser/query/data/structure/index/user screens — do not duplicate `WindowInsets` handling there; `enableEdgeToEdge()` is in `MainActivity`.
+6. **Query log (`_currentQuery`)**: every ViewModel uses `MutableStateFlow<List<String>>`. Append each SQL (`_currentQuery.value += sql`) before `connectionManager.executeQuery()`. Reset the list on full refresh. This ensures no hidden queries — every query hitting the server must appear in `CurrentQueryBar`.
 
 ---
 

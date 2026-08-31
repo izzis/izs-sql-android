@@ -177,7 +177,7 @@ fun UserPrivilegeDetailScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(query = currentQuery) }
+        bottomBar = { CurrentQueryBar(queries = currentQuery) }
     ) { paddingValues ->
         Column(
             modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState()).padding(12.dp)

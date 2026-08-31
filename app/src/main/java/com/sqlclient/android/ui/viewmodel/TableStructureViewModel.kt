@@ -32,11 +32,11 @@ class TableStructureViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery
+    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
+    val currentQuery: StateFlow<List<String>> = _currentQuery
 
     fun loadStructure(database: String, table: String) {
-        _currentQuery.value = "SHOW FULL COLUMNS FROM `$database`.`$table`"
+        _currentQuery.value = listOf("SHOW FULL COLUMNS FROM `$database`.`$table`")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -85,7 +85,9 @@ class TableStructureViewModel @Inject constructor(
     }
 
     private suspend fun loadCreateTable(database: String, table: String) {
-        when (val result = connectionManager.executeQuery("SHOW CREATE TABLE `$database`.`$table`")) {
+        val sql = "SHOW CREATE TABLE `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + sql
+        when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 _createTable.value = result.rows.firstOrNull()?.getOrNull(1)?.toString()
             }
@@ -95,7 +97,9 @@ class TableStructureViewModel @Inject constructor(
     }
 
     private suspend fun loadIndexes(database: String, table: String) {
-        when (val result = connectionManager.executeQuery("SHOW INDEX FROM `$database`.`$table`")) {
+        val sql = "SHOW INDEX FROM `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + sql
+        when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 val indexMap = mutableMapOf<String, MutableList<Pair<String, Int>>>()
                 val indexTypes = mutableMapOf<String, String>()

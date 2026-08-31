@@ -154,7 +154,7 @@ fun InlineDataEditorScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(query = currentQuery) }
+        bottomBar = { CurrentQueryBar(queries = currentQuery) }
     ) { paddingValues ->
         Column(
             modifier = Modifier

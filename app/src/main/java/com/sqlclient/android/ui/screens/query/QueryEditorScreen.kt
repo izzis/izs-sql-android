@@ -98,7 +98,7 @@ fun QueryEditorScreen(
                 onBack = onBack
             )
         },
-        bottomBar = { CurrentQueryBar(query = currentQuery.ifBlank { activeTab?.query ?: "" }) }
+        bottomBar = { CurrentQueryBar(queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query)) }
     ) { paddingValues ->
         Column(
             modifier = Modifier

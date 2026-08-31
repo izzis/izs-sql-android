@@ -32,11 +32,11 @@ class IndexManagementViewModel @Inject constructor(
     private val _operationSuccess = MutableStateFlow<String?>(null)
     val operationSuccess: StateFlow<String?> = _operationSuccess.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
+    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
 
     fun loadIndexes(database: String, table: String) {
-        _currentQuery.value = "SHOW INDEX FROM `$database`.`$table`"
+        _currentQuery.value = listOf("SHOW INDEX FROM `$database`.`$table`")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -79,7 +79,9 @@ class IndexManagementViewModel @Inject constructor(
     fun loadColumns(database: String, table: String) {
         viewModelScope.launch {
             try {
-                when (val result = connectionManager.executeQuery("SHOW COLUMNS FROM `$database`.`$table`")) {
+                val sql = "SHOW COLUMNS FROM `$database`.`$table`"
+                _currentQuery.value = _currentQuery.value + sql
+                when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _columns.value = result.rows.map { row ->
                             row[0].toString()
@@ -103,7 +105,7 @@ class IndexManagementViewModel @Inject constructor(
                 val uniqueStr = if (unique) "UNIQUE " else ""
                 val colList = columns.joinToString(", ") { "`$it`" }
                 val sql = "CREATE ${uniqueStr}INDEX `$name` ON `$database`.`$table` ($colList)"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Index '$name' created"
@@ -127,7 +129,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "DROP INDEX `$name` ON `$database`.`$table`"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Index '$name' dropped"
@@ -151,7 +153,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "RENAME TABLE `$database`.`$oldName` TO `$database`.`$newName`"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Table renamed to '$newName'"
@@ -174,7 +176,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Column added"
@@ -198,7 +200,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Column '$columnName' dropped"
@@ -222,7 +224,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` MODIFY COLUMN $columnDef"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         _operationSuccess.value = "Column modified"

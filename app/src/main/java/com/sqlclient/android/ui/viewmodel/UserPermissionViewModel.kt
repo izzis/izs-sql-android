@@ -43,7 +43,7 @@ class UserPermissionViewModel @Inject constructor(
     fun loadAllDatabases() {
         viewModelScope.launch {
             try {
-                _currentQuery.value = "SHOW DATABASES"
+                _currentQuery.value = _currentQuery.value + "SHOW DATABASES"
                 when (val r = connectionManager.executeQuery("SHOW DATABASES")) {
                     is QueryResult.Success -> _allDatabases.value = r.rows.map { it[0].toString() }.filterNot { it.lowercase() in setOf("information_schema","performance_schema","sys") }
                     else -> {}
@@ -55,7 +55,7 @@ class UserPermissionViewModel @Inject constructor(
         if (_dbTables.value.containsKey(database)) return
         viewModelScope.launch {
             try {
-                _currentQuery.value = "SHOW TABLES IN `$database`"
+                _currentQuery.value = _currentQuery.value + "SHOW TABLES IN `$database`"
                 when (val r = connectionManager.executeQuery("SHOW TABLES IN `$database`")) {
                     is QueryResult.Success -> _dbTables.value = _dbTables.value + (database to r.rows.map { it[0].toString() })
                     else -> _dbTables.value = _dbTables.value + (database to emptyList())
@@ -96,12 +96,12 @@ class UserPermissionViewModel @Inject constructor(
             _pendingPrivChanges.value = _pendingPrivChanges.value + (key to wantChecked)
         }
         val sqls = buildPendingPrivSqls(user, host)
-        _currentQuery.value = if (sqls.isNotEmpty()) sqls.joinToString(";\n") else "SHOW GRANTS FOR `$user`@`$host`"
+        _currentQuery.value = if (sqls.isNotEmpty()) sqls else listOf("SHOW GRANTS FOR `$user`@`$host`")
     }
 
     fun clearPendingPrivs(user: String, host: String) {
         _pendingPrivChanges.value = emptyMap()
-        _currentQuery.value = "SHOW GRANTS FOR `$user`@`$host`"
+        _currentQuery.value = listOf("SHOW GRANTS FOR `$user`@`$host`")
     }
 
     fun commitPendingPrivs(user: String, host: String, isLocked: Boolean = false) {
@@ -113,7 +113,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 for (sql in sqls) {
-                    _currentQuery.value = sql
+                    _currentQuery.value = _currentQuery.value + sql
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
                         else -> {}
@@ -130,8 +130,8 @@ class UserPermissionViewModel @Inject constructor(
         }
     }
 
-    private val _currentQuery = MutableStateFlow("")
-    val currentQuery: StateFlow<String> = _currentQuery
+    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
+    val currentQuery: StateFlow<List<String>> = _currentQuery
 
     /** Manual refresh — cache-first. Call from TopBar Refresh. Back uses cached users. */
     fun refreshUsers() {
@@ -140,7 +140,7 @@ class UserPermissionViewModel @Inject constructor(
     }
 
     fun loadUsers(force: Boolean = false) {
-        _currentQuery.value = "SELECT user, host FROM mysql.user ORDER BY user, host"
+        _currentQuery.value = listOf("SELECT user, host FROM mysql.user ORDER BY user, host")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -215,7 +215,7 @@ class UserPermissionViewModel @Inject constructor(
     }
 
     fun loadGrants(user: String, host: String) {
-        _currentQuery.value = "SHOW GRANTS FOR `$user`@`$host`"
+        _currentQuery.value = listOf("SHOW GRANTS FOR `$user`@`$host`")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -242,7 +242,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = buildGrantSql(user, host, privilege, database, table)
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
@@ -266,7 +266,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = buildRevokeSql(user, host, privilege, database, table)
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
@@ -302,7 +302,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "CREATE USER `$user`@`$host` IDENTIFIED BY '${password.replace("'","''")}'"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
@@ -325,7 +325,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "DROP USER `$user`@`$host`"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
@@ -347,7 +347,7 @@ class UserPermissionViewModel @Inject constructor(
             _isLoading.value = true; _error.value = null
             try {
                 val sql = "RENAME USER `$oldUser`@`$oldHost` TO `$newUser`@`$newHost`"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { flushPrivileges(); loadUsers() } }
             } catch (e: Exception) { _error.value = "Failed to rename user: ${e.message}" } finally { _isLoading.value = false }
         }
@@ -359,7 +359,7 @@ class UserPermissionViewModel @Inject constructor(
             try {
                 val esc = newPassword.replace("'","''")
                 val sql = "ALTER USER `$user`@`$host` IDENTIFIED BY '$esc'"
-                _currentQuery.value = sql
+                _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { flushPrivileges(); loadUsers() } }
             } catch (e: Exception) { _error.value = "Failed to change password: ${e.message}" } finally { _isLoading.value = false }
         }
@@ -368,6 +368,7 @@ class UserPermissionViewModel @Inject constructor(
     private fun flushPrivileges() {
         viewModelScope.launch {
             try {
+                _currentQuery.value = _currentQuery.value + "FLUSH PRIVILEGES"
                 connectionManager.executeQuery("FLUSH PRIVILEGES")
             } catch (_: Exception) {}
         }

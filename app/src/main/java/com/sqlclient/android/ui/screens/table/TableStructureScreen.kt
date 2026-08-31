@@ -133,7 +133,7 @@ fun TableStructureScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(query = if (idxQuery.isNotBlank()) idxQuery else currentQuery) },
+        bottomBar = { CurrentQueryBar(queries = if (idxQuery.isNotEmpty()) idxQuery else currentQuery) },
         floatingActionButton = {
             if (selectedTab == 2) {
                 ExtendedFloatingActionButton(
