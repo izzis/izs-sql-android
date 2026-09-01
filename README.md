@@ -462,7 +462,6 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 
 **Alpha gaps (shipped as-is, PRs welcome):**
 
-- Several post-refactor flows are unpolished: `export/` and `settings/` screens are scaffolded but not functional; no offline/queue support.
 - Room version `1` with destructive migration — upgrade path will drop data until a real migration ships.
 - SSH `StrictHostKeyChecking=no`; no known-hosts UI.
 - `DatabaseTree` column/index lazy loads are not independently cancellable; rapid expand/collapse can briefly show stale children.
@@ -475,6 +474,43 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 - Pagination polish: stable `LIMIT/OFFSET` footer + total-row-count (`COUNT(*)`) opt-in.
 - `PrivilegeResolver` cache invalidation hook after `GRANT/REVOKE/FLUSH PRIVILEGES` (today `loadGrants` must be called explicitly per destination).
 - Compose previews / screenshot tests for `Browser`, `InlineDataEditorScreen.DataGrid`, and privilege detail.
+
+---
+
+## TODO — Unimplemented features
+
+> Features that are **already implemented in code** but **not yet wired into the UI**. A future AI or developer can pick these up without re-crawling the entire codebase.
+
+### 1. Export (CSV, JSON, SQL INSERT)
+
+**Status:** `ExportUtil.kt` fully implemented (129 lines), zero UI references.
+
+| Method | Description |
+|--------|-------------|
+| `exportToCsv(context, columns, rows, fileName)` | Writes query results to a `.csv` file via `FileProvider` |
+| `exportToJson(context, columns, rows, fileName)` | Writes query results to a `.json` file |
+| `exportToSqlInsert(context, table, columns, rows, fileName)` | Generates `INSERT INTO table VALUES (...)` statements |
+| `shareFile(context, file, mimeType)` | Android share intent for the exported file |
+
+**Where to add UI:** Add export buttons to `InlineDataEditorScreen` (top bar or overflow menu) and `QueryEditorScreen` (after results are shown). Pass `columns`/`rows` from the ViewModel's current result set.
+
+### 2. Insert Row dialog
+
+**Status:** `InsertRowDialog` composable implemented at `InlineDataEditorScreen.kt:1102-1154`. `showInsertDialog` state at line 121. No UI element triggers it.
+
+**Where to add UI:** Add a FAB (`FloatingActionButton`) or a `+` icon in the top bar of `InlineDataEditorScreen` that sets `showInsertDialog = true`. The dialog takes column metadata, builds an `INSERT INTO table (cols) VALUES (vals)` statement, and submits it through the existing `executeUpdate` flow.
+
+### 3. History Panel (query history browser)
+
+**Status:** `HistoryPanel` composable is a placeholder (`"Query history will appear here"`) at `DatabaseBrowserScreen.kt:715-719`. The data layer is fully wired: `QueryHistoryDao.getHistoryByConnection()`, `QueryRepository.getHistoryByConnection()`, `QueryHistoryEntity` with `id`, `connectionProfileId`, `query`, `executedAt`.
+
+**Where to add UI:** Replace the placeholder `HistoryPanel` with a `LazyColumn` that calls `viewModel.getHistory(profileId)` (needs a new method on `BrowserViewModel` that delegates to `QueryRepository`). Display `QueryHistoryEntity.query` + `executedAt` with tap-to-copy.
+
+### 4. Index Management standalone route
+
+**Status:** Route `index_management/{database}/{table}` defined at `NavGraph.kt:280-308`. `IndexManagementScreen` composable exists. But no screen ever navigates to this route — index management is already embedded inline in `TableStructureScreen`.
+
+**Decision needed:** Either wire the route (add a button in `TableStructureScreen` to navigate to standalone index management) or remove the dead route + unreachable `IndexManagementScreen` if inline is preferred.
 
 ---
 
