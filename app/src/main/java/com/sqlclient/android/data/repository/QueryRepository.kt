@@ -29,11 +29,16 @@ class QueryRepository @Inject constructor(
         return historyDao.getFavoritesByConnection(connectionId)
     }
 
-    suspend fun saveToHistory(connectionId: Long, query: String): Long {
+    fun getFavoritesByConnectionAndDatabase(connectionId: Long, database: String): Flow<List<QueryHistoryEntity>> {
+        return historyDao.getFavoritesByConnectionAndDatabase(connectionId, database)
+    }
+
+    suspend fun saveToHistory(connectionId: Long, query: String, database: String? = null): Long {
         return historyDao.insertHistory(
             QueryHistoryEntity(
                 connectionId = connectionId,
-                queryText = query
+                queryText = query,
+                database = database
             )
         )
     }

@@ -25,6 +25,9 @@ data class QueryHistoryEntity(
     @ColumnInfo(name = "connection_id")
     val connectionId: Long,
 
+    @ColumnInfo(name = "database")
+    val database: String? = null,
+
     @ColumnInfo(name = "query_text")
     val queryText: String,
 

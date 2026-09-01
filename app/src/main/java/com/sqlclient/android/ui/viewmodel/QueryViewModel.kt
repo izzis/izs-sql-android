@@ -35,6 +35,8 @@ class QueryViewModel @Inject constructor(
     private val _currentProfileId = MutableStateFlow<Long?>(null)
     val currentProfileId: StateFlow<Long?> = _currentProfileId.asStateFlow()
 
+    private var _currentDatabase: String? = null
+
     private var nextTabId = 2L
 
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
@@ -92,6 +94,15 @@ class QueryViewModel @Inject constructor(
         }
     }
 
+    fun useDatabase(database: String) {
+        _currentDatabase = database
+        val sql = "USE `$database`"
+        _currentQuery.value = listOf(sql)
+        viewModelScope.launch {
+            try { connectionManager.executeQueryIfFree(sql) } catch (_: Exception) {}
+        }
+    }
+
     fun executeQuery(isLocked: Boolean = false) {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return
         val query = activeTab.query.trim()
@@ -137,22 +148,27 @@ class QueryViewModel @Inject constructor(
         }
     }
 
-    fun saveFavorite(query: String, name: String? = null) {
+    fun saveFavorite(query: String, name: String? = null, database: String? = null) {
         val profileId = _currentProfileId.value ?: return
         viewModelScope.launch {
-            val id = queryRepository.saveToHistory(profileId, query)
+            val id = queryRepository.saveToHistory(profileId, query, database)
             queryRepository.toggleFavorite(id, true)
             if (!name.isNullOrBlank()) {
                 queryRepository.renameHistory(id, name)
             }
-            loadFavorites(profileId)
+            loadFavorites(profileId, database)
         }
     }
 
-    fun loadFavorites(profileId: Long? = null) {
+    fun loadFavorites(profileId: Long? = null, database: String? = null) {
         val id = profileId ?: _currentProfileId.value ?: return
         viewModelScope.launch {
-            queryRepository.getFavoritesByConnection(id).collect { favorites ->
+            val flow = if (database != null) {
+                queryRepository.getFavoritesByConnectionAndDatabase(id, database)
+            } else {
+                queryRepository.getFavoritesByConnection(id)
+            }
+            flow.collect { favorites ->
                 _savedQueries.value = favorites
             }
         }
@@ -169,7 +185,7 @@ class QueryViewModel @Inject constructor(
         viewModelScope.launch {
             queryRepository.deleteHistory(entity)
             val profileId = _currentProfileId.value ?: return@launch
-            loadFavorites(profileId)
+            loadFavorites(profileId, _currentDatabase)
         }
     }
 
@@ -177,7 +193,7 @@ class QueryViewModel @Inject constructor(
         viewModelScope.launch {
             queryRepository.renameHistory(entity.id, newName)
             val profileId = _currentProfileId.value ?: return@launch
-            loadFavorites(profileId)
+            loadFavorites(profileId, _currentDatabase)
         }
     }
 
@@ -201,6 +217,17 @@ class QueryViewModel @Inject constructor(
     fun getActiveQueryText(): String {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return ""
         return activeTab.query.trim()
+    }
+
+    suspend fun fetchColumns(database: String, table: String): List<String>? {
+        val sql = "SHOW COLUMNS FROM `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + sql
+        return try {
+            when (val result = connectionManager.executeQueryIfFree(sql)) {
+                is QueryResult.Success -> result.rows.mapNotNull { it[0]?.toString() }
+                else -> null
+            }
+        } catch (_: Exception) { null }
     }
 }
 

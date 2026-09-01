@@ -1,76 +1,33 @@
 package com.sqlclient.android.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun SqlEditor(
     query: TextFieldValue,
     onQueryChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier,
-    readOnly: Boolean = false
+    readOnly: Boolean = false,
+    enableAutocomplete: Boolean = true,
+    databaseNames: List<String> = emptyList(),
+    tableNames: List<String> = emptyList(),
+    columnNames: List<String> = emptyList(),
+    onFetchExtraColumns: (suspend (tableName: String) -> List<String>?)? = null,
+    onFetchTablesForDatabase: (suspend (database: String) -> List<String>?)? = null,
 ) {
-    val scrollState = rememberScrollState()
-
-    BasicTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(120.dp)
-            .border(
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
-                RoundedCornerShape(8.dp)
-            )
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-            .verticalScroll(scrollState),
+    SqlEditorWithAutocomplete(
+        query = query,
+        onQueryChange = onQueryChange,
+        modifier = modifier.fillMaxWidth(),
         readOnly = readOnly,
-        textStyle = TextStyle(
-            fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Normal
-        ),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        decorationBox = { innerTextField ->
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                if (query.text.isEmpty()) {
-                    Text(
-                        text = "Enter your SQL query here...",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                    )
-                }
-                innerTextField()
-            }
-        }
+        enableAutocomplete = enableAutocomplete,
+        databaseNames = databaseNames,
+        tableNames = tableNames,
+        columnNames = columnNames,
+        onFetchExtraColumns = onFetchExtraColumns,
+        onFetchTablesForDatabase = onFetchTablesForDatabase
     )
 }

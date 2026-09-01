@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -62,6 +63,7 @@ import com.sqlclient.android.ui.components.QueryTabBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.data.local.entity.QueryHistoryEntity
 import com.sqlclient.android.ui.components.SqlEditor
+import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.QueryResultState
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
@@ -71,6 +73,7 @@ import com.sqlclient.android.ui.viewmodel.QueryViewModel
 fun SQLEditorScreen(
     viewModel: QueryViewModel,
     connectionViewModel: ConnectionViewModel,
+    browserViewModel: BrowserViewModel,
     profile: ConnectionProfileEntity,
     database: String,
     table: String,
@@ -90,6 +93,12 @@ fun SQLEditorScreen(
 
     LaunchedEffect(profile.id) {
         viewModel.setCurrentProfileId(profile.id)
+    }
+
+    // Auto-select database on editor open
+    LaunchedEffect(database, profile.id) {
+        viewModel.loadFavorites(profile.id, database)
+        viewModel.useDatabase(database)
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -112,11 +121,55 @@ fun SQLEditorScreen(
     var showEditor by remember { mutableStateOf(true) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var renamingQuery by remember { mutableStateOf<QueryHistoryEntity?>(null) }
+
+    // Autocomplete
+    var enableAutocomplete by remember { mutableStateOf(true) }
+    val databases by browserViewModel.databases.collectAsState()
+    val tablesByDb by browserViewModel.tables.collectAsState()
+    val allColumns by browserViewModel.columns.collectAsState()
+    var columnCache by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    val tableNames = remember(tablesByDb, database) { tablesByDb[database] ?: emptyList() }
+    val databaseNames = remember(databases) { databases.map { it.name } }
+    val currentColumns = remember(allColumns, database, table, columnCache) {
+        allColumns["$database.$table"]?.map { it.name }
+            ?: columnCache["$database.$table"]
+            ?: emptyList()
+    }
+    val fetchExtraColumns: (suspend (String) -> List<String>?)? = if (enableAutocomplete) {
+        { tableName: String ->
+            val key = "$database.$tableName"
+            columnCache[key] ?: run {
+                val fetched = viewModel.fetchColumns(database, tableName)
+                if (fetched != null) columnCache = columnCache + (key to fetched)
+                fetched
+            }
+        }
+    } else null
+
+    val fetchTablesForDb: (suspend (String) -> List<String>?)? = if (enableAutocomplete) {
+        { dbName: String ->
+            browserViewModel.getCachedTables(dbName)
+                ?: run {
+                    browserViewModel.requestTablesSync(dbName)
+                    browserViewModel.getCachedTables(dbName)
+                }
+        }
+    } else null
+
+    LaunchedEffect(database, table, enableAutocomplete) {
+        if (enableAutocomplete && currentColumns.isEmpty() && table != "_") {
+            val key = "$database.$table"
+            if (columnCache[key] == null) {
+                val fetched = viewModel.fetchColumns(database, table)
+                if (fetched != null) columnCache = columnCache + (key to fetched)
+            }
+        }
+    }
     Scaffold(
         topBar = {
             AppTopBar(
                 title = "SQL Editor",
-                subtitle = "$database.$table",
+                subtitle = if (table == "_") database else "$database.$table",
                 containerColor = topBarColor,
                 onRefresh = {
                     if (!viewModel.isWriteQuery()) {
@@ -231,7 +284,14 @@ fun SQLEditorScreen(
                             queryText = it
                             viewModel.updateQuery(tab.id, it.text)
                         },
-                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        readOnly = isLocked,
+                        enableAutocomplete = enableAutocomplete,
+                        databaseNames = databaseNames,
+                        tableNames = tableNames,
+                        columnNames = currentColumns,
+                        onFetchExtraColumns = fetchExtraColumns,
+                        onFetchTablesForDatabase = fetchTablesForDb
                     )
                 }
             }
@@ -242,8 +302,26 @@ fun SQLEditorScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { enableAutocomplete = !enableAutocomplete }
+                    ) {
+                        IconButton(onClick = { enableAutocomplete = !enableAutocomplete }, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = if (enableAutocomplete) "Disable autocomplete" else "Enable autocomplete",
+                                modifier = Modifier.size(16.dp),
+                                tint = if (enableAutocomplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "Autocomplete",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (enableAutocomplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Button(
                         onClick = {
                             if (viewModel.isWriteQuery()) {
@@ -348,7 +426,7 @@ fun SQLEditorScreen(
                             showSaveDialog = false
                             val q = activeTab?.query ?: return@TextButton
                             val name = saveName.ifBlank { null }
-                            viewModel.saveFavorite(q, name)
+                            viewModel.saveFavorite(q, name, database)
                             if (name != null) {
                                 viewModel.updateTabTitle(activeTab!!.id, name)
                             }

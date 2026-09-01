@@ -3,6 +3,7 @@ package com.sqlclient.android.ui.screens.dataeditor
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -54,6 +57,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,6 +81,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
@@ -85,6 +91,8 @@ import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.ui.components.SqlEditor
+import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
@@ -95,6 +103,7 @@ fun InlineDataEditorScreen(
     viewModel: DataEditorViewModel,
     connectionViewModel: ConnectionViewModel,
     queryViewModel: QueryViewModel,
+    browserViewModel: BrowserViewModel,
     profile: ConnectionProfileEntity,
     database: String,
     table: String,
@@ -130,7 +139,7 @@ fun InlineDataEditorScreen(
     var showSaveConfirm by remember { mutableStateOf(false) }
     var showSQLEditor by remember { mutableStateOf(false) }
     var showWriteConfirm by remember { mutableStateOf(false) }
-    var editableQuery by remember { mutableStateOf("") }
+    var editableQuery by remember { mutableStateOf(TextFieldValue("")) }
     val savedQueries by queryViewModel.savedQueries.collectAsState()
     var showSavedQueries by remember { mutableStateOf(false) }
     var renamingQuery by remember { mutableStateOf<com.sqlclient.android.data.local.entity.QueryHistoryEntity?>(null) }
@@ -140,8 +149,34 @@ fun InlineDataEditorScreen(
     // Multi-select batch edit: when editing a cell while rows are selected
     var multiEditTarget by remember { mutableStateOf<Triple<Int, Int, Any?>?>(null) }
 
+    // Autocomplete
+    var enableAutocomplete by remember { mutableStateOf(true) }
+    val databases by browserViewModel.databases.collectAsState()
+    val tablesByDb by browserViewModel.tables.collectAsState()
+    val allColumns by browserViewModel.columns.collectAsState()
+    var columnCache by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    val tableNames = remember(tablesByDb, database) { tablesByDb[database] ?: emptyList() }
+    val databaseNames = remember(databases) { databases.map { it.name } }
+    val currentTableColumns = remember(allColumns, database, table, columns) {
+        allColumns["$database.$table"]?.map { it.name }
+            ?: columns.map { it.name }
+            ?: emptyList()
+    }
+    val fetchExtraColumns: (suspend (String) -> List<String>?)? = if (enableAutocomplete) {
+        { tableName: String ->
+            val key = "$database.$tableName"
+            columnCache[key] ?: run {
+                val fetched = viewModel.fetchColumnsForAutocomplete(database, tableName)
+                if (fetched != null) columnCache = columnCache + (key to fetched)
+                fetched
+            }
+        }
+    } else null
+
     LaunchedEffect(query) {
-        editableQuery = query
+        if (editableQuery.text != query) {
+            editableQuery = TextFieldValue(query, selection = TextRange(query.length))
+        }
     }
 
     LaunchedEffect(database, table) {
@@ -204,7 +239,7 @@ fun InlineDataEditorScreen(
                 query = editableQuery,
                 onQueryChange = {
                     editableQuery = it
-                    viewModel.setQuery(it)
+                    viewModel.setQuery(it.text)
                 },
                 onExecute = {
                     if (viewModel.isWriteQuery()) {
@@ -216,15 +251,22 @@ fun InlineDataEditorScreen(
                 isExpanded = showSQLEditor,
                 onToggle = { showSQLEditor = !showSQLEditor },
                 enabled = !(isLocked && viewModel.isWriteQuery()),
+                readOnly = isLocked,
                 savedQueries = savedQueries,
                 showSavedQueries = showSavedQueries,
                 onToggleSavedQueries = { showSavedQueries = !showSavedQueries },
                 onSelectSavedQuery = { query ->
-                    editableQuery = query
+                    editableQuery = TextFieldValue(query, selection = TextRange(query.length))
                     viewModel.setQuery(query)
                 },
                 onDeleteSavedQuery = { q -> queryViewModel.deleteSavedQuery(q) },
-                onRenameSavedQuery = { q -> renamingQuery = q }
+                onRenameSavedQuery = { q -> renamingQuery = q },
+                enableAutocomplete = enableAutocomplete,
+                onToggleAutocomplete = { enableAutocomplete = !enableAutocomplete },
+                databaseNames = databaseNames,
+                tableNames = tableNames,
+                columnNames = currentTableColumns,
+                onFetchExtraColumns = fetchExtraColumns
             )
 
             WhereFilterBar(
@@ -540,23 +582,30 @@ fun InlineDataEditorScreen(
 
 @Composable
 private fun SqlEditorBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
+    query: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
     onExecute: () -> Unit,
     isExpanded: Boolean,
     onToggle: () -> Unit,
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     savedQueries: List<com.sqlclient.android.data.local.entity.QueryHistoryEntity> = emptyList(),
     showSavedQueries: Boolean = false,
     onToggleSavedQueries: () -> Unit = {},
     onSelectSavedQuery: (String) -> Unit = {},
     onDeleteSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
-    onRenameSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {}
+    onRenameSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
+    enableAutocomplete: Boolean = true,
+    onToggleAutocomplete: () -> Unit = {},
+    databaseNames: List<String> = emptyList(),
+    tableNames: List<String> = emptyList(),
+    columnNames: List<String> = emptyList(),
+    onFetchExtraColumns: (suspend (tableName: String) -> List<String>?)? = null,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         Row(
             modifier = Modifier
@@ -635,22 +684,41 @@ private fun SqlEditorBar(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp)
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp),
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    maxLines = 5
+                SqlEditor(
+                    query = query,
+                    onQueryChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = readOnly,
+                    enableAutocomplete = enableAutocomplete,
+                    databaseNames = databaseNames,
+                    tableNames = tableNames,
+                    columnNames = columnNames,
+                    onFetchExtraColumns = onFetchExtraColumns
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { onToggleAutocomplete() }
+                    ) {
+                        IconButton(onClick = { onToggleAutocomplete() }, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = if (enableAutocomplete) "Disable autocomplete" else "Enable autocomplete",
+                                modifier = Modifier.size(16.dp),
+                                tint = if (enableAutocomplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "Autocomplete",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (enableAutocomplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     TextButton(
                         onClick = onExecute,
                         enabled = enabled,
@@ -736,11 +804,13 @@ private fun WhereFilterBar(
             textFieldValue = textFieldValue.copy(text = whereInput, selection = androidx.compose.ui.text.TextRange(whereInput.length))
         }
     }
+
     val frag = whereInput.trimEnd().split(Regex("[^a-zA-Z0-9_]+")).lastOrNull()?.lowercase() ?: ""
     val endsWithSpace = whereInput.isNotEmpty() && whereInput.last().isWhitespace()
     val exactMatch = columns.any { it.name.lowercase() == frag }
     val showSuggestions = frag.length >= 1 && !endsWithSpace && !exactMatch
     val suggestions = if (showSuggestions) columns.map { it.name }.filter { it.lowercase().contains(frag) }.take(6) else emptyList()
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -768,25 +838,46 @@ private fun WhereFilterBar(
             TextButton(onClick = onApply, modifier = Modifier.height(32.dp)) { Text("Go", style = MaterialTheme.typography.labelSmall) }
         }
         if (suggestions.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                suggestions.forEach { col ->
-                    androidx.compose.material3.AssistChip(
-                        onClick = {
-                            val cur = textFieldValue.text
-                            val lastFrag = cur.trimEnd().split(Regex("[^a-zA-Z0-9_]+")).lastOrNull() ?: ""
-                            val prefix = if (lastFrag.isNotEmpty() && cur.trimEnd().endsWith(lastFrag)) cur.trimEnd().dropLast(lastFrag.length) else cur.trimEnd()
-                            val sep = if (prefix.isEmpty() || prefix.endsWith(" ")) "" else " "
-                            val next = prefix + sep + col + " "
-                            val cursorPos = next.length
-                            textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
-                                text = next,
-                                selection = androidx.compose.ui.text.TextRange(cursorPos)
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                shape = RoundedCornerShape(6.dp),
+                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                    suggestions.forEach { col ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val cur = textFieldValue.text
+                                    val lastFrag = cur.trimEnd().split(Regex("[^a-zA-Z0-9_]+")).lastOrNull() ?: ""
+                                    val prefix = if (lastFrag.isNotEmpty() && cur.trimEnd().endsWith(lastFrag)) cur.trimEnd().dropLast(lastFrag.length) else cur.trimEnd()
+                                    val sep = if (prefix.isEmpty() || prefix.endsWith(" ")) "" else " "
+                                    val next = prefix + sep + col + " "
+                                    textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
+                                        text = next,
+                                        selection = androidx.compose.ui.text.TextRange(next.length)
+                                    )
+                                    onWhereChange(next)
+                                }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
-                            onWhereChange(next)
-                        },
-                        label = { Text(col, style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.height(24.dp)
-                    )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = col,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }

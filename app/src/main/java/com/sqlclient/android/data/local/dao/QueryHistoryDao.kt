@@ -17,6 +17,9 @@ interface QueryHistoryDao {
     @Query("SELECT * FROM query_history WHERE connection_id = :connectionId AND is_favorite = 1 ORDER BY executed_at DESC")
     fun getFavoritesByConnection(connectionId: Long): Flow<List<QueryHistoryEntity>>
 
+    @Query("SELECT * FROM query_history WHERE connection_id = :connectionId AND is_favorite = 1 AND (database = :database OR database IS NULL) ORDER BY executed_at DESC")
+    fun getFavoritesByConnectionAndDatabase(connectionId: Long, database: String): Flow<List<QueryHistoryEntity>>
+
     @Query("SELECT * FROM query_history WHERE id = :id")
     suspend fun getHistoryById(id: Long): QueryHistoryEntity?
 

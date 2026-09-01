@@ -218,12 +218,30 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun refreshTables(database: String) {
-        // Invalidate only this DB's tables/columns/indexes/sizes
         _tables.value = _tables.value - database
         _tableSizes.value = _tableSizes.value.filterKeys { !it.startsWith("$database.") }
         _columns.value = _columns.value.filterKeys { !it.startsWith("$database.") }
         _indexes.value = _indexes.value.filterKeys { !it.startsWith("$database.") }
         requestTables(database)
+    }
+
+    fun getCachedTables(database: String): List<String>? {
+        val tables = _tables.value[database]
+        return if (_tables.value.containsKey(database)) tables else null
+    }
+
+    suspend fun requestTablesSync(database: String): List<String>? {
+        if (_tables.value.containsKey(database)) return _tables.value[database]
+        return try {
+            when (val result = connectionManager.executeQueryIfFree("SHOW TABLES IN `$database`")) {
+                is QueryResult.Success -> {
+                    val names = result.rows.map { it[0].toString() }
+                    _tables.value = _tables.value + (database to names)
+                    names
+                }
+                else -> null
+            }
+        } catch (_: Exception) { null }
     }
 
     /**

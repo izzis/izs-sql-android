@@ -432,7 +432,7 @@ class DataEditorViewModel @Inject constructor(
         _sortColumn.value = null
         _sortAsc.value = true
 
-        val sql = "SELECT * FROM `$database`.`$table` LIMIT ${_dataLimit.value}"
+        val sql = "SELECT * FROM $database.$table LIMIT ${_dataLimit.value}"
         _query.value = sql
         _currentQuery.value = listOf(sql)
 
@@ -658,6 +658,17 @@ class DataEditorViewModel @Inject constructor(
 
     fun clearSuccess() {
         _operationSuccess.value = null
+    }
+
+    suspend fun fetchColumnsForAutocomplete(database: String, table: String): List<String>? {
+        val sql = "SHOW COLUMNS FROM `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + sql
+        return try {
+            when (val result = connectionManager.executeQueryIfFree(sql)) {
+                is QueryResult.Success -> result.rows.mapNotNull { it[0]?.toString() }
+                else -> null
+            }
+        } catch (_: Exception) { null }
     }
 
     fun getPkColumn(): String? = autoIncrementColumn

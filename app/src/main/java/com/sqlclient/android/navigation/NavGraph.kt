@@ -164,6 +164,7 @@ fun NavGraph(themeManager: ThemeManager) {
                 SQLEditorScreen(
                     viewModel = queryViewModel,
                     connectionViewModel = connectionViewModel,
+                    browserViewModel = browserViewModel,
                     profile = currentProfile,
                     database = database,
                     table = table,
@@ -227,6 +228,7 @@ fun NavGraph(themeManager: ThemeManager) {
                     viewModel = dataEditorViewModel,
                     connectionViewModel = connectionViewModel,
                     queryViewModel = queryViewModel,
+                    browserViewModel = browserViewModel,
                     profile = currentProfile,
                     database = database,
                     table = table,

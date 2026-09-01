@@ -12,7 +12,7 @@ import com.sqlclient.android.data.local.entity.QueryHistoryEntity
         ConnectionProfileEntity::class,
         QueryHistoryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
