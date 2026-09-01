@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
@@ -143,6 +144,7 @@ fun InlineDataEditorScreen(
     val savedQueries by queryViewModel.savedQueries.collectAsState()
     var showSavedQueries by remember { mutableStateOf(false) }
     var renamingQuery by remember { mutableStateOf<com.sqlclient.android.data.local.entity.QueryHistoryEntity?>(null) }
+    var deletingSavedQuery by remember { mutableStateOf<com.sqlclient.android.data.local.entity.QueryHistoryEntity?>(null) }
     val pendingEdits by viewModel.pendingEdits.collectAsState()
     val pendingDeletes by viewModel.pendingDeletes.collectAsState()
     val hasPending = pendingEdits.isNotEmpty() || pendingDeletes.isNotEmpty()
@@ -259,8 +261,12 @@ fun InlineDataEditorScreen(
                     editableQuery = TextFieldValue(query, selection = TextRange(query.length))
                     viewModel.setQuery(query)
                 },
-                onDeleteSavedQuery = { q -> queryViewModel.deleteSavedQuery(q) },
+                onDeleteSavedQuery = { q -> deletingSavedQuery = q },
                 onRenameSavedQuery = { q -> renamingQuery = q },
+                onSaveSavedQuery = { q ->
+                    val current = editableQuery.text.ifBlank { q.queryText }
+                    queryViewModel.updateSavedQuery(q.id, current, q.name, q.database ?: database)
+                },
                 enableAutocomplete = enableAutocomplete,
                 onToggleAutocomplete = { enableAutocomplete = !enableAutocomplete },
                 databaseNames = databaseNames,
@@ -578,6 +584,23 @@ fun InlineDataEditorScreen(
             }
         )
     }
+
+    deletingSavedQuery?.let { entity ->
+        AlertDialog(
+            onDismissRequest = { deletingSavedQuery = null },
+            title = { Text("Delete Saved Query") },
+            text = { Text("Delete \"${entity.name ?: "Unnamed"}\"?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    queryViewModel.deleteSavedQuery(entity)
+                    deletingSavedQuery = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingSavedQuery = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -595,6 +618,7 @@ private fun SqlEditorBar(
     onSelectSavedQuery: (String) -> Unit = {},
     onDeleteSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
     onRenameSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
+    onSaveSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
     enableAutocomplete: Boolean = true,
     onToggleAutocomplete: () -> Unit = {},
     databaseNames: List<String> = emptyList(),
@@ -667,11 +691,14 @@ private fun SqlEditorBar(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        IconButton(onClick = { onRenameSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
+                        IconButton(onClick = { onRenameSavedQuery(q) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
                         }
-                        IconButton(onClick = { onDeleteSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(14.dp))
+                        IconButton(onClick = { onSaveSavedQuery(q) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Save, contentDescription = "Save", modifier = Modifier.size(18.dp))
+                        }
+                        IconButton(onClick = { onDeleteSavedQuery(q) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(18.dp))
                         }
                     }
                 }

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.AlertDialog
@@ -89,16 +90,19 @@ fun SQLEditorScreen(
     val isExecuting by viewModel.isExecuting.collectAsState()
     val savedQueries by viewModel.savedQueries.collectAsState()
 
-    val activeTab = queryTabs.find { it.id == activeTabId }
+    // Tabs are per-database to avoid mixing db1 tabs into db2
+    val tabsForDb = remember(queryTabs, database) { queryTabs.filter { it.database == database } }
+    val activeTab = queryTabs.find { it.id == activeTabId }?.takeIf { it.database == database } ?: tabsForDb.firstOrNull()
 
     LaunchedEffect(profile.id) {
         viewModel.setCurrentProfileId(profile.id)
     }
 
-    // Auto-select database on editor open
+    // Auto-select database on editor open and ensure at least one tab for this database
     LaunchedEffect(database, profile.id) {
         viewModel.loadFavorites(profile.id, database)
         viewModel.useDatabase(database)
+        viewModel.ensureTabForDatabase(database)
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -121,6 +125,7 @@ fun SQLEditorScreen(
     var showEditor by remember { mutableStateOf(true) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var renamingQuery by remember { mutableStateOf<QueryHistoryEntity?>(null) }
+    var deletingQuery by remember { mutableStateOf<QueryHistoryEntity?>(null) }
 
     // Autocomplete
     var enableAutocomplete by remember { mutableStateOf(true) }
@@ -202,11 +207,11 @@ fun SQLEditorScreen(
         ) {
             ReconnectBanner(message = reconnectMessage)
             QueryTabBar(
-                tabs = queryTabs,
-                activeTabId = activeTabId,
+                tabs = tabsForDb,
+                activeTabId = activeTab?.id ?: activeTabId,
                 onTabClick = { viewModel.setActiveTab(it) },
                 onCloseTab = { viewModel.closeTab(it) },
-                onAddTab = { viewModel.addTab() }
+                onAddTab = { viewModel.addTab(database) }
             )
 
             Row(
@@ -264,11 +269,11 @@ fun SQLEditorScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            IconButton(onClick = { renamingQuery = q }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
+                            IconButton(onClick = { renamingQuery = q }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
                             }
-                            IconButton(onClick = { viewModel.deleteSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(14.dp))
+                            IconButton(onClick = { deletingQuery = q }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -398,10 +403,11 @@ fun SQLEditorScreen(
             }
 
             if (showSaveDialog) {
-                var saveName by remember { mutableStateOf(activeTab?.title?.take(40) ?: "") }
+                val isEdit = activeTab?.savedQueryId != null
+                var saveName by remember(activeTab?.id, activeTab?.savedQueryId) { mutableStateOf(activeTab?.title?.take(40) ?: "") }
                 AlertDialog(
                     onDismissRequest = { showSaveDialog = false },
-                    title = { Text("Save Query") },
+                    title = { Text(if (isEdit) "Update Saved Query" else "Save Query") },
                     text = {
                         Column {
                             Text("Name:", style = MaterialTheme.typography.labelMedium)
@@ -430,13 +436,9 @@ fun SQLEditorScreen(
                     confirmButton = {
                         TextButton(onClick = {
                             showSaveDialog = false
-                            val q = activeTab?.query ?: return@TextButton
                             val name = saveName.ifBlank { null }
-                            viewModel.saveFavorite(q, name, database)
-                            if (name != null) {
-                                viewModel.updateTabTitle(activeTab!!.id, name)
-                            }
-                        }) { Text("Save") }
+                            viewModel.saveFavoriteForActiveTab(name, database)
+                        }) { Text(if (isEdit) "Update" else "Save") }
                     },
                     dismissButton = {
                         TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
@@ -465,6 +467,23 @@ fun SQLEditorScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { renamingQuery = null }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            if (deletingQuery != null) {
+                AlertDialog(
+                    onDismissRequest = { deletingQuery = null },
+                    title = { Text("Delete Saved Query") },
+                    text = { Text("Delete \"${deletingQuery?.name ?: "Unnamed"}\"?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            deletingQuery?.let { viewModel.deleteSavedQuery(it) }
+                            deletingQuery = null
+                        }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { deletingQuery = null }) { Text("Cancel") }
                     }
                 )
             }

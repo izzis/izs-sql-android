@@ -51,6 +51,14 @@ class QueryRepository @Inject constructor(
         historyDao.renameHistory(historyId, name)
     }
 
+    suspend fun updateSavedQuery(id: Long, queryText: String, database: String?, name: String?) {
+        historyDao.updateSavedQuery(id, queryText, database, name)
+    }
+
+    suspend fun getHistoryById(id: Long): QueryHistoryEntity? {
+        return historyDao.getHistoryById(id)
+    }
+
     suspend fun deleteHistory(history: QueryHistoryEntity) {
         historyDao.deleteHistory(history)
     }

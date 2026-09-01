@@ -40,6 +40,8 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
 - **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
 - **Session lock vs profile default** — `ConnectionProfileEntity.isReadonly` is the **default on connect**; `ConnectionViewModel.sessionLocked` is the **live session lock** toggled from the top bar (does not persist to Room) and wired to every route via `NavGraph`.
+- **Saved queries (Manage)** — `QueryHistoryEntity.isFavorite` grouped by database, **Manage Saved Queries** screen from sidebar (fixed bottom + badge): expand/collapse per-database folders, copy/rename/delete/open to SQL Editor, **backup/restore JSON** (`version` + `exported_at` + `queries[{name, database, query_text}]`). Top bar uses per-profile color.
+- **SQL editor tabs per-database** — `QueryTab` carries `database` + `savedQueryId`; tabs are filtered per `query/{database}/{table}` so `db1` tabs don't mix into `db2`. Re-saving a tab that came from a saved query updates the same row (`UPDATE query_history SET query_text, database, name WHERE id`), deleting a saved query unlinks its tab so next save creates new.
 - **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
 
@@ -369,8 +371,9 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 | `connections` | Connection list | `ui/screens/connection/ConnectionListScreen.kt` | `ConnectionCard` grid, `ThemeManager`-aware |
 | `connection/new` | Create connection | `ui/screens/connection/ConnectionEditorScreen.kt` | Build `ConnectionProfileEntity` + credential snapshot (id `999999` for Test) |
 | `connection/edit/{profileId}` | Edit connection | same | `remember(profile.id)` for `isReadonly` checkbox |
-| `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state |
-| `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Editor + autocomplete + history tabs, Execute, timing |
+| `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state, **Manage Saved Queries** entry fixed bottom |
+| `manage_saved_queries` | Manage Saved Queries | `ui/screens/query/ManageSavedQueriesScreen.kt` | Grouped by database (`compareBy({it=="Other"}, {it})`), `AnimatedVisibility` expand, Backup/Restore, Rename/Delete/Copy/Open → `query/{db}/_` |
+| `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Per-database tabs (`QueryTab.database` + `savedQueryId`), autocomplete (no auto-popup on open), history tabs, Execute, timing |
 | `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |

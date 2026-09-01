@@ -8,6 +8,7 @@ import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import com.sqlclient.android.data.repository.QueryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,11 +21,26 @@ class QueryViewModel @Inject constructor(
     private val queryRepository: QueryRepository
 ) : ViewModel() {
 
-    private val _queryTabs = MutableStateFlow<List<QueryTab>>(listOf(QueryTab(id = 1, query = "")))
+    private val _queryTabs = MutableStateFlow<List<QueryTab>>(listOf(QueryTab(id = 1, query = "", database = null)))
     val queryTabs: StateFlow<List<QueryTab>> = _queryTabs.asStateFlow()
 
     private val _activeTabId = MutableStateFlow(1L)
     val activeTabId: StateFlow<Long> = _activeTabId.asStateFlow()
+
+    fun getTabsForDatabase(database: String): List<QueryTab> = _queryTabs.value.filter { it.database == database }
+    fun ensureTabForDatabase(database: String) {
+        if (_queryTabs.value.none { it.database == database }) {
+            val usedNumbers = _queryTabs.value.mapNotNull { tab ->
+                Regex("^Query (\\d+)$").find(tab.title)?.groupValues?.get(1)?.toIntOrNull()
+            }.toSet()
+            val nextNumber = (1..usedNumbers.size + 1).firstOrNull { it !in usedNumbers } ?: usedNumbers.size + 1
+            val newTab = QueryTab(id = nextTabId++, query = "", title = "Query $nextNumber", database = database)
+            _queryTabs.value = _queryTabs.value + newTab
+            _activeTabId.value = newTab.id
+        } else if (_queryTabs.value.find { it.id == _activeTabId.value }?.database != database) {
+            _queryTabs.value.find { it.database == database }?.let { _activeTabId.value = it.id }
+        }
+    }
 
     private val _queryResult = MutableStateFlow<QueryResultState>(QueryResultState.Idle)
     val queryResult: StateFlow<QueryResultState> = _queryResult.asStateFlow()
@@ -45,6 +61,12 @@ class QueryViewModel @Inject constructor(
     private val _savedQueries = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())
     val savedQueries: StateFlow<List<QueryHistoryEntity>> = _savedQueries.asStateFlow()
 
+    private var _favoritesJob: Job? = null
+
+    private val _allFavorites = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())
+    val allFavorites: StateFlow<List<QueryHistoryEntity>> = _allFavorites.asStateFlow()
+    private var _allFavoritesJob: Job? = null
+
     fun setCurrentProfileId(profileId: Long) {
         val prev = _currentProfileId.value
         _currentProfileId.value = profileId
@@ -53,19 +75,24 @@ class QueryViewModel @Inject constructor(
         }
     }
 
-    fun addTab() {
-        val usedNumbers = _queryTabs.value.mapNotNull { tab ->
+    fun addTab(database: String? = _currentDatabase) {
+        val usedNumbers = _queryTabs.value.filter { it.database == database }.mapNotNull { tab ->
             Regex("^Query (\\d+)$").find(tab.title)?.groupValues?.get(1)?.toIntOrNull()
         }.toSet()
         val nextNumber = (1..usedNumbers.size + 1).firstOrNull { it !in usedNumbers } ?: usedNumbers.size + 1
-        val newTab = QueryTab(id = nextTabId++, query = "", title = "Query $nextNumber")
+        val newTab = QueryTab(id = nextTabId++, query = "", title = "Query $nextNumber", database = database)
         _queryTabs.value = _queryTabs.value + newTab
         _activeTabId.value = newTab.id
     }
 
     fun closeTab(tabId: Long) {
         val tabs = _queryTabs.value.toMutableList()
-        if (tabs.size <= 1) return
+        val closing = tabs.find { it.id == tabId } ?: return
+        val dbTabs = tabs.filter { it.database == closing.database }
+        if (dbTabs.size <= 1 && tabs.size <= 1) return
+        // if closing last tab for its database, keep at least one for that db
+        val allowClose = dbTabs.size > 1 || tabs.size > dbTabs.size
+        if (!allowClose) return
 
         val index = tabs.indexOfFirst { it.id == tabId }
         if (index != -1) {
@@ -73,7 +100,13 @@ class QueryViewModel @Inject constructor(
             _queryTabs.value = tabs
 
             if (_activeTabId.value == tabId) {
-                _activeTabId.value = tabs.getOrElse(index.coerceAtMost(tabs.lastIndex)) { tabs.first() }.id
+                // prefer tab from same database
+                val sameDb = tabs.filter { it.database == closing.database }
+                _activeTabId.value = if (sameDb.isNotEmpty()) {
+                    sameDb.getOrElse(index.coerceAtMost(sameDb.lastIndex)) { sameDb.first() }.id
+                } else {
+                    tabs.getOrElse(index.coerceAtMost(tabs.lastIndex)) { tabs.first() }.id
+                }
             }
         }
     }
@@ -157,12 +190,39 @@ class QueryViewModel @Inject constructor(
                 queryRepository.renameHistory(id, name)
             }
             loadFavorites(profileId, database)
+            loadAllFavorites(profileId)
+        }
+    }
+
+    fun saveFavoriteForActiveTab(name: String?, database: String?) {
+        val tab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return
+        val query = tab.query
+        if (query.isBlank()) return
+        val savedId = tab.savedQueryId
+        if (savedId != null) {
+            updateSavedQuery(savedId, query, name, database)
+        } else {
+            // create new and bind to tab
+            val profileId = _currentProfileId.value ?: return
+            viewModelScope.launch {
+                val id = queryRepository.saveToHistory(profileId, query, database)
+                queryRepository.toggleFavorite(id, true)
+                if (!name.isNullOrBlank()) {
+                    queryRepository.renameHistory(id, name)
+                }
+                _queryTabs.value = _queryTabs.value.map {
+                    if (it.id == tab.id) it.copy(savedQueryId = id, title = name?.takeIf { n -> n.isNotBlank() } ?: it.title) else it
+                }
+                loadFavorites(profileId, database)
+                loadAllFavorites(profileId)
+            }
         }
     }
 
     fun loadFavorites(profileId: Long? = null, database: String? = null) {
         val id = profileId ?: _currentProfileId.value ?: return
-        viewModelScope.launch {
+        _favoritesJob?.cancel()
+        _favoritesJob = viewModelScope.launch {
             val flow = if (database != null) {
                 queryRepository.getFavoritesByConnectionAndDatabase(id, database)
             } else {
@@ -174,18 +234,49 @@ class QueryViewModel @Inject constructor(
         }
     }
 
+    fun loadAllFavorites(profileId: Long) {
+        _allFavoritesJob?.cancel()
+        _allFavoritesJob = viewModelScope.launch {
+            queryRepository.getFavoritesByConnection(profileId).collect {
+                _allFavorites.value = it
+            }
+        }
+    }
+
     fun openSavedQuery(entity: QueryHistoryEntity) {
         val title = entity.name ?: "Query"
-        val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title)
+        val db = entity.database ?: _currentDatabase
+        val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title, savedQueryId = entity.id, database = db)
         _queryTabs.value = _queryTabs.value + newTab
         _activeTabId.value = newTab.id
+    }
+
+    fun updateSavedQuery(savedQueryId: Long, query: String, name: String?, database: String? = null) {
+        viewModelScope.launch {
+            val finalName = name?.takeIf { it.isNotBlank() }
+            queryRepository.updateSavedQuery(savedQueryId, query, database, finalName)
+            val pid = _currentProfileId.value ?: return@launch
+            loadFavorites(pid, _currentDatabase)
+            loadAllFavorites(pid)
+            // keep tab title in sync
+            val tab = _queryTabs.value.find { it.savedQueryId == savedQueryId }
+            if (tab != null) {
+                val newTitle = finalName ?: "Query"
+                updateTabTitle(tab.id, newTitle)
+            }
+        }
     }
 
     fun deleteSavedQuery(entity: QueryHistoryEntity) {
         viewModelScope.launch {
             queryRepository.deleteHistory(entity)
+            // unlink any tabs that were opened from this saved query so next save creates new
+            _queryTabs.value = _queryTabs.value.map { tab ->
+                if (tab.savedQueryId == entity.id) tab.copy(savedQueryId = null) else tab
+            }
             val profileId = _currentProfileId.value ?: return@launch
             loadFavorites(profileId, _currentDatabase)
+            loadAllFavorites(profileId)
         }
     }
 
@@ -194,7 +285,14 @@ class QueryViewModel @Inject constructor(
             queryRepository.renameHistory(entity.id, newName)
             val profileId = _currentProfileId.value ?: return@launch
             loadFavorites(profileId, _currentDatabase)
+            loadAllFavorites(profileId)
         }
+    }
+
+    suspend fun saveFavoriteDirect(profileId: Long, query: String, database: String?, name: String?) {
+        val id = queryRepository.saveToHistory(profileId, query, database)
+        queryRepository.toggleFavorite(id, true)
+        if (!name.isNullOrBlank()) queryRepository.renameHistory(id, name)
     }
 
     fun clearAll() {
@@ -234,7 +332,9 @@ class QueryViewModel @Inject constructor(
 data class QueryTab(
     val id: Long,
     val query: String,
-    val title: String = "Query ${id}"
+    val title: String = "Query ${id}",
+    val savedQueryId: Long? = null,
+    val database: String? = null
 )
 
 sealed class QueryResultState {

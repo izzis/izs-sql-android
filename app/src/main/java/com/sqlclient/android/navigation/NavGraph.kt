@@ -18,6 +18,7 @@ import com.sqlclient.android.ui.screens.browser.DatabaseBrowserScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionEditorScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionListScreen
 import com.sqlclient.android.ui.screens.dataeditor.InlineDataEditorScreen
+import com.sqlclient.android.ui.screens.query.ManageSavedQueriesScreen
 import com.sqlclient.android.ui.screens.query.SQLEditorScreen
 import com.sqlclient.android.ui.screens.table.IndexManagementScreen
 import com.sqlclient.android.ui.screens.table.TableStructureScreen
@@ -118,6 +119,7 @@ fun NavGraph(themeManager: ThemeManager) {
                     viewModel = browserViewModel,
                     userViewModel = userPermissionViewModel,
                     connectionViewModel = connectionViewModel,
+                    queryViewModel = queryViewModel,
                     profile = currentProfile,
                     onDisconnect = {
                         connectionViewModel.disconnect()
@@ -137,6 +139,7 @@ fun NavGraph(themeManager: ThemeManager) {
                         navController.navigate("data_editor/$db/$table")
                     },
                     onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
+                    onNavigateToSavedQueries = { navController.navigate("manage_saved_queries") },
                     onReconnect = { connectionViewModel.reconnect() },
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
@@ -278,6 +281,23 @@ fun NavGraph(themeManager: ThemeManager) {
                 onReconnect = { connectionViewModel.reconnect() },
                 isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )
+        }
+
+        composable("manage_saved_queries") {
+            val currentProfile = (connectionViewModel.connectionState.value as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
+            if (currentProfile != null) {
+                ManageSavedQueriesScreen(
+                    queryViewModel = queryViewModel,
+                    connectionViewModel = connectionViewModel,
+                    profile = currentProfile,
+                    isLocked = connectionViewModel.sessionLocked.collectAsState().value,
+                    onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
+                    onBack = { navController.popBackStack() },
+                    onOpenQuery = { db, table -> navController.navigate("query/$db/$table") },
+                    onReconnect = { connectionViewModel.reconnect() },
+                    isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
+                )
+            }
         }
 
         composable(

@@ -88,6 +88,7 @@ import com.sqlclient.android.ui.components.DatabaseTree
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel.BrowserPanel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
+import com.sqlclient.android.ui.viewmodel.QueryViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 import kotlinx.coroutines.launch
 
@@ -97,6 +98,7 @@ fun DatabaseBrowserScreen(
     viewModel: BrowserViewModel,
     userViewModel: UserPermissionViewModel,
     connectionViewModel: ConnectionViewModel,
+    queryViewModel: QueryViewModel,
     profile: ConnectionProfileEntity,
     onDisconnect: () -> Unit,
     isLocked: Boolean,
@@ -105,6 +107,7 @@ fun DatabaseBrowserScreen(
     onOpenTableStructure: (String, String) -> Unit,
     onOpenDataEditor: (String, String) -> Unit,
     onOpenUserDetail: (String, String) -> Unit = { _, _ -> },
+    onNavigateToSavedQueries: () -> Unit = {},
     onReconnect: (() -> Unit)? = null,
     isReconnecting: Boolean = false
 ) {
@@ -168,6 +171,10 @@ fun DatabaseBrowserScreen(
         }
     }
 
+    val allFavoritesList by queryViewModel.allFavorites.collectAsState()
+    val savedQueryCount = allFavoritesList.size
+    LaunchedEffect(Unit) { queryViewModel.loadAllFavorites(profile.id) }
+
     val topBarColor = try {
         Color(android.graphics.Color.parseColor(profile.color))
     } catch (_: Exception) {
@@ -218,6 +225,11 @@ fun DatabaseBrowserScreen(
                         viewModel.setActivePanel(BrowserPanel.HISTORY)
                         scope.launch { drawerState.close() }
                     },
+                    onSavedQueriesClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToSavedQueries()
+                    },
+                    savedQueryCount = savedQueryCount,
                     selectedDatabase = selectedDatabase
                 )
             }

@@ -40,4 +40,7 @@ interface QueryHistoryDao {
 
     @Query("UPDATE query_history SET name = :name WHERE id = :id")
     suspend fun renameHistory(id: Long, name: String)
+
+    @Query("UPDATE query_history SET query_text = :queryText, database = :database, name = :name WHERE id = :id")
+    suspend fun updateSavedQuery(id: Long, queryText: String, database: String?, name: String?)
 }

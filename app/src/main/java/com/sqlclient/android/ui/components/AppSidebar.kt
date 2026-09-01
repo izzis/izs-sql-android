@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Refresh
@@ -53,6 +54,8 @@ fun AppSidebar(
     onDatabaseClick: (String) -> Unit,
     onUsersClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onSavedQueriesClick: () -> Unit = {},
+    savedQueryCount: Int = 0,
     selectedDatabase: String? = null,
     modifier: Modifier = Modifier
 ) {
@@ -216,6 +219,13 @@ fun AppSidebar(
                     }
                 }
             }
+            HorizontalDivider()
+            SidebarSectionHeader(
+                icon = Icons.Default.Bookmark,
+                title = "Manage Saved Queries",
+                subtitle = if (savedQueryCount > 0) "$savedQueryCount" else null,
+                onClick = onSavedQueriesClick
+            )
         }
     }
 }

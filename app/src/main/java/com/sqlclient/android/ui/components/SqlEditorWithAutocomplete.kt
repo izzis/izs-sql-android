@@ -556,7 +556,7 @@ fun SqlEditorWithAutocomplete(
                 SqlContext.AFTER_DOT -> {}
                 else -> {}
             }
-            if (currentWord.isNotEmpty() || ctx == SqlContext.START) {
+            if (currentWord.isNotEmpty()) {
                 val allowedKeywords: Set<String>? = when (ctx) {
                     SqlContext.START -> null
                     SqlContext.AFTER_SELECT -> setOf("DISTINCT", "AS", "ALL", "TOP")
