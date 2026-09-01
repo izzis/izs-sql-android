@@ -186,11 +186,10 @@ fun InlineDataEditorScreen(
                 query = editableQuery,
                 onQueryChange = { editableQuery = it },
                 onExecute = {
-                    if (isLocked) {
-                        viewModel.setQuery(editableQuery)
+                    viewModel.setQuery(editableQuery)
+                    if (viewModel.isWriteQuery() && isLocked) {
                         return@SqlEditorBar
                     }
-                    viewModel.setQuery(editableQuery)
                     if (viewModel.isWriteQuery()) {
                         showWriteConfirm = true
                     } else {
@@ -589,50 +588,67 @@ private fun WhereFilterBar(
     onClear: () -> Unit,
     columns: List<ColumnMetadata> = emptyList()
 ) {
-    // Hide suggestions when input ends with space or frag already equals a column name
+    var textFieldValue by remember(whereInput) {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(
+            text = whereInput,
+            selection = androidx.compose.ui.text.TextRange(whereInput.length)
+        ))
+    }
+    LaunchedEffect(whereInput) {
+        if (textFieldValue.text != whereInput) {
+            textFieldValue = textFieldValue.copy(text = whereInput, selection = androidx.compose.ui.text.TextRange(whereInput.length))
+        }
+    }
     val frag = whereInput.trimEnd().split(Regex("[^a-zA-Z0-9_]+")).lastOrNull()?.lowercase() ?: ""
     val endsWithSpace = whereInput.isNotEmpty() && whereInput.last().isWhitespace()
     val exactMatch = columns.any { it.name.lowercase() == frag }
     val showSuggestions = frag.length >= 1 && !endsWithSpace && !exactMatch
     val suggestions = if (showSuggestions) columns.map { it.name }.filter { it.lowercase().contains(frag) }.take(6) else emptyList()
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(text = "WHERE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
-                value = whereInput,
-                onValueChange = onWhereChange,
-                placeholder = { Text("kolom = 'nilai'", style = MaterialTheme.typography.labelSmall) },
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    textFieldValue = newValue
+                    onWhereChange(newValue.text)
+                },
+                placeholder = { Text("e.g. name = 'John'", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
                 singleLine = true,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(48.dp),
                 textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 trailingIcon = {
                     if (whereInput.isNotEmpty()) {
-                        IconButton(onClick = onClear, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(14.dp))
+                        IconButton(onClick = onClear, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(12.dp))
                         }
                     }
                 }
             )
-            TextButton(onClick = onApply, modifier = Modifier.height(32.dp)) { Text("Filter", style = MaterialTheme.typography.labelSmall) }
+            TextButton(onClick = onApply, modifier = Modifier.height(32.dp)) { Text("Go", style = MaterialTheme.typography.labelSmall) }
         }
         if (suggestions.isNotEmpty()) {
-            Row(modifier = Modifier.fillMaxWidth().padding(start = 44.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 suggestions.forEach { col ->
                     androidx.compose.material3.AssistChip(
                         onClick = {
-                            val cur = whereInput
+                            val cur = textFieldValue.text
                             val lastFrag = cur.trimEnd().split(Regex("[^a-zA-Z0-9_]+")).lastOrNull() ?: ""
                             val prefix = if (lastFrag.isNotEmpty() && cur.trimEnd().endsWith(lastFrag)) cur.trimEnd().dropLast(lastFrag.length) else cur.trimEnd()
                             val sep = if (prefix.isEmpty() || prefix.endsWith(" ")) "" else " "
                             val next = prefix + sep + col + " "
+                            val cursorPos = next.length
+                            textFieldValue = androidx.compose.ui.text.input.TextFieldValue(
+                                text = next,
+                                selection = androidx.compose.ui.text.TextRange(cursorPos)
+                            )
                             onWhereChange(next)
                         },
                         label = { Text(col, style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.height(28.dp)
+                        modifier = Modifier.height(24.dp)
                     )
                 }
             }
