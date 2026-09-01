@@ -1,6 +1,7 @@
 package com.sqlclient.android.ui.screens.user
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -227,29 +229,49 @@ fun UserPrivilegeDetailScreen(
             } else {
                 allDatabases.forEach { db ->
                     val boldDb = effectiveHasAnyPriv(db, null)
+                    val onKey = "${db}.*"
+                    val allCheckedDb = PRIVS.all { effectiveChecked(it, onKey) }
+                    val someCheckedDb = PRIVS.any { effectiveChecked(it, onKey) }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(db, style = MaterialTheme.typography.bodyMedium, fontWeight = if (boldDb) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
+                        if (expandedPriv == db) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = allCheckedDb,
+                                    onCheckedChange = { want: Boolean ->
+                                        if (isLocked) return@Checkbox
+                                        PRIVS.forEach { priv ->
+                                            val base = hasPrivOnTarget(priv, onKey)
+                                            viewModel.stagePrivToggle(user, host, priv, onKey, want, base)
+                                        }
+                                    },
+                                    enabled = !isLocked,
+                                    modifier = Modifier.size(24.dp),
+                                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                )
+                                Text("All", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
+                            }
+                        }
                         TextButton(onClick = { expandedPriv = if (expandedPriv == db) null else db }, enabled = true) { Text(if (expandedPriv == db) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
                         IconButton(onClick = { val e = expandedDb == db; expandedDb = if (e) null else db; if (!e) viewModel.loadTablesForDb(db) }, modifier = Modifier.size(28.dp)) {
                             Icon(if (expandedDb == db) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
                     }
                     if (expandedPriv == db) {
-                        val onKey = "${db}.*"
-                        Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(6.dp)).padding(8.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                PRIVS.chunked(4).forEach { chunk ->
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        chunk.forEach { priv ->
-                                            val baseChecked = hasPrivOnTarget(priv, onKey)
-                                            val checked = effectiveChecked(priv, onKey)
-                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                                Checkbox(checked = checked, onCheckedChange = { want: Boolean ->
-                                                    if (isLocked) return@Checkbox
-                                                    viewModel.stagePrivToggle(user, host, priv, onKey, want, baseChecked)
-                                                }, enabled = !isLocked, modifier = Modifier.size(28.dp))
-                                                Text(priv, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 2.dp))
-                                            }
+                        Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(6.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PRIVS.chunked(4).forEach { row ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    row.forEach { priv ->
+                                        val baseChecked = hasPrivOnTarget(priv, onKey)
+                                        val checked = effectiveChecked(priv, onKey)
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).clickable(enabled = !isLocked) {
+                                            viewModel.stagePrivToggle(user, host, priv, onKey, !checked, baseChecked)
+                                        }) {
+                                            Checkbox(checked = checked, onCheckedChange = { want: Boolean ->
+                                                if (isLocked) return@Checkbox
+                                                viewModel.stagePrivToggle(user, host, priv, onKey, want, baseChecked)
+                                            }, enabled = !isLocked, modifier = Modifier.size(24.dp))
+                                            Text(priv, style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
@@ -267,27 +289,46 @@ fun UserPrivilegeDetailScreen(
                             Column(modifier = Modifier.padding(start = 16.dp)) {
                                 tables.forEach { tbl ->
                                     val boldTbl = effectiveHasAnyPriv(db, tbl)
+                                    val tKey = "$db.$tbl"
+                                    val allCheckedTbl = PRIVS.all { effectiveChecked(it, tKey) }
                                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text(tbl, style = MaterialTheme.typography.bodySmall, fontWeight = if (boldTbl) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                                            TextButton(onClick = { expandedPriv = if (expandedPriv == "$db.$tbl") null else "$db.$tbl" }) { Text(if (expandedPriv == "$db.$tbl") "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
+                                            if (expandedPriv == tKey) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(
+                                                        checked = allCheckedTbl,
+                                                        onCheckedChange = { want: Boolean ->
+                                                            if (isLocked) return@Checkbox
+                                                            PRIVS.forEach { priv ->
+                                                                val base = hasPrivOnTarget(priv, tKey)
+                                                                viewModel.stagePrivToggle(user, host, priv, tKey, want, base)
+                                                            }
+                                                        },
+                                                        enabled = !isLocked,
+                                                        modifier = Modifier.size(24.dp),
+                                                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                                    )
+                                                    Text("All", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
+                                                }
+                                            }
+                                            TextButton(onClick = { expandedPriv = if (expandedPriv == tKey) null else tKey }) { Text(if (expandedPriv == tKey) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
                                         }
-                                        if (expandedPriv == "$db.$tbl") {
-                                            val tKey = "$db.$tbl"
-                                            Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(6.dp)).padding(6.dp)) {
-                                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    PRIVS.chunked(4).forEach { chunk ->
-                                                        Column(modifier = Modifier.weight(1f)) {
-                                                            chunk.forEach { priv ->
-                                                                val baseCheckedTbl = hasPrivOnTarget(priv, tKey)
-                                                                val checkedTbl = effectiveChecked(priv, tKey)
-                                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                                    Checkbox(checked = checkedTbl, onCheckedChange = { want: Boolean ->
-                                                                        if (isLocked) return@Checkbox
-                                                                        viewModel.stagePrivToggle(user, host, priv, tKey, want, baseCheckedTbl)
-                                                                    }, enabled = !isLocked, modifier = Modifier.size(28.dp))
-                                                                    Text(priv, style = MaterialTheme.typography.labelSmall)
-                                                                }
+                                        if (expandedPriv == tKey) {
+                                            Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(6.dp)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                PRIVS.chunked(4).forEach { row ->
+                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        row.forEach { priv ->
+                                                            val baseCheckedTbl = hasPrivOnTarget(priv, tKey)
+                                                            val checkedTbl = effectiveChecked(priv, tKey)
+                                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).clickable(enabled = !isLocked) {
+                                                                viewModel.stagePrivToggle(user, host, priv, tKey, !checkedTbl, baseCheckedTbl)
+                                                            }) {
+                                                                Checkbox(checked = checkedTbl, onCheckedChange = { want: Boolean ->
+                                                                    if (isLocked) return@Checkbox
+                                                                    viewModel.stagePrivToggle(user, host, priv, tKey, want, baseCheckedTbl)
+                                                                }, enabled = !isLocked, modifier = Modifier.size(24.dp))
+                                                                Text(priv, style = MaterialTheme.typography.labelSmall)
                                                             }
                                                         }
                                                     }
