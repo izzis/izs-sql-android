@@ -22,12 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,10 +50,13 @@ import android.widget.Toast
 @Composable
 fun CurrentQueryBar(
     queries: List<String>,
+    isExecuting: Boolean = false,
+    onCancel: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    if (queries.isEmpty()) return
-    val lastQuery = queries.last()
+    // show bar even when executing but no queries yet (e.g. immediate after execute)
+    if (queries.isEmpty() && !isExecuting) return
+    val lastQuery = queries.lastOrNull() ?: ""
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
@@ -86,30 +92,49 @@ fun CurrentQueryBar(
                             modifier = Modifier.weight(1f)
                         )
                     } else {
-                        Text(
-                            text = "Current query",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .padding(start = 4.dp)
-                        )
+                        if (isExecuting) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Executing...",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            Text(
+                                text = "Current query",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .padding(start = 4.dp)
+                            )
+                        }
                     }
-                    IconButton(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(queries.joinToString(";\n")))
-                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy all", modifier = Modifier.size(14.dp))
+                    if (isExecuting && onCancel != null) {
+                        TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 24.dp)) {
+                            Icon(Icons.Default.Stop, contentDescription = "Cancel", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Cancel", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(queries.joinToString(";\n")))
+                                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy all", modifier = Modifier.size(14.dp))
+                        }
                     }
                 }
 

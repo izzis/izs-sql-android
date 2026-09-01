@@ -7,6 +7,8 @@ import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,6 +75,16 @@ class DataEditorViewModel @Inject constructor(
 
     private val _lastQueryDurationMs = MutableStateFlow<Long?>(null)
     val lastQueryDurationMs: StateFlow<Long?> = _lastQueryDurationMs.asStateFlow()
+
+    private var currentLoadJob: Job? = null
+
+    fun cancelCurrentQuery() {
+        currentLoadJob?.cancel()
+        viewModelScope.launch(Dispatchers.IO) { try { connectionManager.cancelCurrentQuery() } catch (_: Exception) {} }
+        _isLoading.value = false
+        _isLoadingMore.value = false
+        if (_error.value == null) _error.value = "Cancelled"
+    }
 
     // ORDER BY state
     private val _sortColumn = MutableStateFlow<Int?>(null)

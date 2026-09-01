@@ -229,7 +229,14 @@ fun InlineDataEditorScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(queries = currentQuery) }
+        bottomBar = {
+            val isExec = isLoading || isLoadingMore
+            CurrentQueryBar(
+                queries = currentQuery,
+                isExecuting = isExec,
+                onCancel = if (isExec) ({ viewModel.cancelCurrentQuery() }) else null
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier

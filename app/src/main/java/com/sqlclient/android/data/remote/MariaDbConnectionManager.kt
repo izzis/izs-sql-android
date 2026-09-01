@@ -133,6 +133,12 @@ class MariaDbConnectionManager @Inject constructor(
         }
     }
 
+    @Volatile private var activeStatement: java.sql.Statement? = null
+
+    fun cancelCurrentQuery() {
+        try { activeStatement?.cancel() } catch (_: Exception) {}
+    }
+
     private val queryMutex = kotlinx.coroutines.sync.Mutex()
 
     /** Low-priority query that never blocks UI-critical queries: skips if mutex is busy. */
@@ -144,6 +150,8 @@ class MariaDbConnectionManager @Inject constructor(
             val conn = activeConnection ?: return@withContext QueryResult.Error("No active connection")
             stmt = conn.createStatement()
             try { stmt.queryTimeout = 6 } catch (_: Exception) {}
+            try { stmt.maxRows = 1001 } catch (_: Exception) {}
+            activeStatement = stmt
             val hasResultSet = stmt.execute(sql)
             if (hasResultSet) {
                 rs = stmt.resultSet
@@ -157,13 +165,16 @@ class MariaDbConnectionManager @Inject constructor(
                     val row = (1..columnCount).map { i -> rs.getObject(i) }
                     rows.add(row)
                 }
-                QueryResult.Success(columns = columns, rows = rows, rowCount = rows.size)
+                val truncated = rows.size == 1001
+                val resultRows = if (truncated) rows.dropLast(1) else rows
+                QueryResult.Success(columns = columns, rows = resultRows, rowCount = resultRows.size, truncated = truncated)
             } else {
                 QueryResult.UpdateSuccess(stmt.updateCount)
             }
         } catch (e: SQLException) {
             QueryResult.Error("Query failed: ${e.message}")
         } finally {
+            activeStatement = null
             try { rs?.close() } catch (_: Exception) {}
             try { stmt?.close() } catch (_: Exception) {}
             queryMutex.unlock()
@@ -178,6 +189,8 @@ class MariaDbConnectionManager @Inject constructor(
         try {
             stmt = conn.createStatement()
             try { stmt.queryTimeout = if (sql.contains("information_schema", true)) 6 else 30 } catch (_: Exception) {}
+            try { stmt.maxRows = 1001 } catch (_: Exception) {}
+            activeStatement = stmt
             val hasResultSet = stmt.execute(sql)
             if (hasResultSet) {
                 rs = stmt.resultSet
@@ -191,13 +204,20 @@ class MariaDbConnectionManager @Inject constructor(
                     val row = (1..columnCount).map { i -> rs.getObject(i) }
                     rows.add(row)
                 }
-                QueryResult.Success(columns = columns, rows = rows, rowCount = rows.size)
+                val truncated = rows.size == 1001
+                val resultRows = if (truncated) rows.dropLast(1) else rows
+                QueryResult.Success(columns = columns, rows = resultRows, rowCount = resultRows.size, truncated = truncated)
             } else {
                 QueryResult.UpdateSuccess(stmt.updateCount)
             }
         } catch (e: SQLException) {
-            QueryResult.Error("Query failed: ${e.message}")
+            if (e.message?.contains("cancel", true) == true || e.message?.contains("KILL", true) == true) {
+                QueryResult.Error("Cancelled")
+            } else {
+                QueryResult.Error("Query failed: ${e.message}")
+            }
         } finally {
+            activeStatement = null
             try { rs?.close() } catch (_: Exception) {}
             try { stmt?.close() } catch (_: Exception) {}
             queryMutex.unlock()
@@ -262,7 +282,8 @@ sealed class QueryResult {
     data class Success(
         val columns: List<ColumnMetadata>,
         val rows: List<List<Any?>>,
-        val rowCount: Int
+        val rowCount: Int,
+        val truncated: Boolean = false
     ) : QueryResult()
 
     data class UpdateSuccess(val affectedRows: Int) : QueryResult()

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.data.remote.ConnectionResult
+import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.SshTunnelManager
 import com.sqlclient.android.data.repository.ConnectionRepository
 import com.sqlclient.android.util.CredentialStore
@@ -20,7 +21,8 @@ import javax.inject.Inject
 class ConnectionViewModel @Inject constructor(
     private val connectionRepository: ConnectionRepository,
     private val credentialStore: CredentialStore,
-    private val sshTunnelManager: SshTunnelManager
+    private val sshTunnelManager: SshTunnelManager,
+    private val connectionManager: MariaDbConnectionManager
 ) : ViewModel() {
 
     val profiles: StateFlow<List<ConnectionProfileEntity>> = connectionRepository.getAllProfiles()
@@ -160,6 +162,7 @@ class ConnectionViewModel @Inject constructor(
         if (current !is ConnectionState.Connected) return
         val profile = current.profile
         viewModelScope.launch {
+            try { connectionManager.cancelCurrentQuery() } catch (_: Exception) {}
             _isReconnecting.value = true
             when (connectionRepository.connect(profile)) {
                 is ConnectionResult.Success -> {

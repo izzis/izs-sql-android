@@ -55,6 +55,8 @@ class QueryViewModel @Inject constructor(
 
     private var nextTabId = 2L
 
+    private var currentQueryJob: Job? = null
+
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
     val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
 
@@ -144,7 +146,8 @@ class QueryViewModel @Inject constructor(
         if (isLocked && isWriteQuery()) { _queryResult.value = QueryResultState.Error("Locked \u2014 unlock to write"); return }
 
         _currentQuery.value = listOf(query)
-        viewModelScope.launch {
+        currentQueryJob?.cancel()
+        currentQueryJob = viewModelScope.launch {
             _isExecuting.value = true
             _queryResult.value = QueryResultState.Loading
 
@@ -154,7 +157,8 @@ class QueryViewModel @Inject constructor(
                         _queryResult.value = QueryResultState.Success(
                             columns = result.columns,
                             rows = result.rows,
-                            rowCount = result.rowCount
+                            rowCount = result.rowCount,
+                            truncated = result.truncated
                         )
                         saveToHistory(query)
                     }
@@ -167,10 +171,23 @@ class QueryViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _queryResult.value = QueryResultState.Error("Execution failed: ${e.message}")
+                if (e is kotlinx.coroutines.CancellationException) {
+                    _queryResult.value = QueryResultState.Error("Cancelled")
+                } else {
+                    _queryResult.value = QueryResultState.Error("Execution failed: ${e.message}")
+                }
             } finally {
                 _isExecuting.value = false
             }
+        }
+    }
+
+    fun cancelQuery() {
+        currentQueryJob?.cancel()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { connectionManager.cancelCurrentQuery() } catch (_: Exception) {} }
+        _isExecuting.value = false
+        if (_queryResult.value is QueryResultState.Loading) {
+            _queryResult.value = QueryResultState.Error("Cancelled")
         }
     }
 
@@ -373,7 +390,8 @@ sealed class QueryResultState {
     data class Success(
         val columns: List<ColumnMetadata>,
         val rows: List<List<Any?>>,
-        val rowCount: Int
+        val rowCount: Int,
+        val truncated: Boolean = false
     ) : QueryResultState()
 
     data class UpdateSuccess(val affectedRows: Int) : QueryResultState()

@@ -197,7 +197,13 @@ fun SQLEditorScreen(
                 isReconnecting = isReconnecting
             )
         },
-        bottomBar = { CurrentQueryBar(queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query)) },
+        bottomBar = {
+            CurrentQueryBar(
+                queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query),
+                isExecuting = isExecuting,
+                onCancel = { viewModel.cancelQuery() }
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
@@ -509,10 +515,26 @@ fun SQLEditorScreen(
                             .padding(8.dp)
                     ) {
                         Text(
-                            text = "Result: ${result.rowCount} rows",
+                            text = if (result.truncated) "Result: 1000 rows (truncated — add LIMIT to see more)" else "Result: ${result.rowCount} rows",
                             style = MaterialTheme.typography.labelMedium,
+                            color = if (result.truncated) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
+                        if (result.truncated) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Showing first 1000 rows — add LIMIT/OFFSET to see more. Use Inline Data Editor for pagination.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
 
                         DataTable(
                             columns = result.columns,
