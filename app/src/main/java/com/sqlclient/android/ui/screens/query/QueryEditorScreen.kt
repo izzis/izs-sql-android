@@ -196,93 +196,93 @@ fun QueryEditorScreen(
                         }
                     }
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
-                    ) {
-                        SqlEditor(
-                            query = queryText,
-                            onQueryChange = {
-                                queryText = it
-                                viewModel.updateQuery(tab.id, it.text)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    SqlEditor(
+                        query = queryText,
+                        onQueryChange = {
+                            queryText = it
+                            viewModel.updateQuery(tab.id, it.text)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                    )
+                }
+            }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+            activeTab?.let { tab ->
+                var showWriteConfirm by remember { mutableStateOf(false) }
 
-                        var showWriteConfirm by remember { mutableStateOf(false) }
-
-                        Button(
-                            onClick = {
-                                if (isLocked && viewModel.isWriteQuery()) {
-                                    viewModel.executeQuery(isLocked = true)
-                                    return@Button
-                                }
-                                if (viewModel.isWriteQuery()) {
-                                    showWriteConfirm = true
-                                } else {
-                                    viewModel.executeQuery(isLocked = isLocked)
-                                }
-                            },
-                            enabled = !isExecuting && queryText.text.isNotBlank() && !(isLocked && viewModel.isWriteQuery()),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            if (isExecuting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = {
+                            if (isLocked && viewModel.isWriteQuery()) {
+                                viewModel.executeQuery(isLocked = true)
+                                return@Button
+                            }
+                            if (viewModel.isWriteQuery()) {
+                                showWriteConfirm = true
                             } else {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Execute",
-                                    modifier = Modifier.size(16.dp)
+                                viewModel.executeQuery(isLocked = isLocked)
+                            }
+                        },
+                        enabled = !isExecuting && !(isLocked && viewModel.isWriteQuery()),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        if (isExecuting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Execute",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text("Execute")
+                    }
+                }
+
+                if (showWriteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showWriteConfirm = false },
+                        title = { Text("Confirm Write Query") },
+                        text = {
+                            Column {
+                                Text("This query modifies data. Do you want to execute it?", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("Query:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = viewModel.getActiveQueryText(),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                                        .padding(8.dp)
                                 )
                             }
-                            Text("Execute (Ctrl+Enter)")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showWriteConfirm = false
+                                viewModel.executeQuery(isLocked = isLocked)
+                            }) {
+                                Text("Execute", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showWriteConfirm = false }) {
+                                Text("Cancel")
+                            }
                         }
-
-                        if (showWriteConfirm) {
-                            AlertDialog(
-                                onDismissRequest = { showWriteConfirm = false },
-                                title = { Text("Confirm Write Query") },
-                                text = {
-                                    Column {
-                                        Text("This query modifies data. Do you want to execute it?", style = MaterialTheme.typography.bodyMedium)
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text("Query:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            text = viewModel.getActiveQueryText(),
-                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 4.dp)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
-                                                .padding(8.dp)
-                                        )
-                                    }
-                                },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        showWriteConfirm = false
-                                        viewModel.executeQuery(isLocked = isLocked)
-                                    }) {
-                                        Text("Execute", color = MaterialTheme.colorScheme.error)
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showWriteConfirm = false }) {
-                                        Text("Cancel")
-                                    }
-                                }
-                            )
-                        }
-                    }
+                    )
                 }
             }
 
