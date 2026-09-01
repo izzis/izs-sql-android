@@ -40,7 +40,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
 - **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
 - **Session lock vs profile default** — `ConnectionProfileEntity.isReadonly` is the **default on connect**; `ConnectionViewModel.sessionLocked` is the **live session lock** toggled from the top bar (does not persist to Room) and wired to every route via `NavGraph`.
-- **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = 80-char preview of last query, expanded = full monospace list with copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
+- **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
 
 ---
@@ -49,18 +49,19 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 | Tooling | Version |
 |---------|---------|
-| Android Studio | Hedgehog or newer (AGP 8.2.2, Kotlin 1.9.22) |
+| Android Studio | Ladybug or newer (AGP 8.5.2, Kotlin 2.0.21) |
 | JDK | 17 ( `compileSdk 34`, `minSdk 26`, `targetSdk 34`, `jvmTarget 17` ) |
 | Android SDK | `compileSdk 34`, NDK not required |
-| Gradle | Wrapper `gradlew` checked in (no local install needed) |
+| Gradle | Wrapper `gradlew` checked in (`gradle-8.7`), no local install needed |
 
 Runtime dependencies (see `app/build.gradle.kts`):
 
-- `androidx.compose:compose-bom:2024.02.00`, `material3`, extended icons, `navigation-compose`, `activity-compose`
-- `hilt-android:2.50` + `ksp`, `room:2.6.1` + `ksp`
+- `androidx.compose:compose-bom:2024.09.03`, `material3`, extended icons, `navigation-compose`, `activity-compose`
+- `hilt-android:2.51.1` + `ksp 2.0.21-1.0.28`, `room:2.6.1` + `ksp`
 - `security-crypto:1.1.0-alpha06` (EncryptedSharedPreferences)
 - `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
 - `jsch:0.1.55`, `kotlinx-coroutines-android:1.7.3`
+- `lifecycle-runtime-compose:2.8.7`, `lifecycle-viewmodel-compose:2.8.7`
 
 ---
 
@@ -316,7 +317,7 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 `CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `QueryEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
 
-- `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = 80-char preview of last query; expanded = full `;\n`-joined list, selectable monospace + copy.
+- `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy.
 - `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`.
 - **No hidden queries**: every `connectionManager.executeQuery` call (including background reads like `SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, `information_schema` size queries, `SHOW GRANTS`, and `FLUSH PRIVILEGES`) is reflected in the list. This ensures the query log matches the server's `general_log`.
 
@@ -447,6 +448,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `enableEdgeToEdge` content under nav bar | `Scaffold.bottomBar` without `WindowInsets.navigationBars` | `CurrentQueryBar` already applies `windowInsetsPadding(navigationBars)` — check you did not add a second `navigationBarsPadding` in the child screen |
+| Query log collapsed text cut off | `CurrentQueryBar` header layout issue | The collapsed state now shows just "Query log (N)" without preview text — verify `weight(1f)` is on the Text composable |
 | First open of Databases is empty | `hasLoaded*` cache or stale `visibleDatabases` | Hit **Refresh** in the top bar; verify `PrivilegeResolver.loadGrants` succeeded (logcat `MariaDbConn/JDBC`) |
 | `JSchException: Auth fail` on SSH | Password/key/passphrase mismatch | Check password vs key mode; pass `sshPassphrase` when the key is encrypted; verify `sshHost:22` reachability with `Test SSH` |
 | `Password not found. Save the connection first.` on connect | Credentials not yet saved to `CredentialStore` | Tap **Save** in the editor before **Connect** (or re-save after clearing app data) |
