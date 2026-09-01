@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -114,6 +115,7 @@ fun InlineDataEditorScreen(
     val isReadonly = isLocked
     var showInsertDialog by remember { mutableStateOf(false) }
     var editingCell by remember { mutableStateOf<Triple<Int, Int, Any?>?>(null) }
+    var viewingCell by remember { mutableStateOf<Triple<Int, Int, Any?>?>(null) }
     var pendingSql by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showSaveConfirm by remember { mutableStateOf(false) }
@@ -257,11 +259,12 @@ fun InlineDataEditorScreen(
                     onCellClick = { rowIndex, colIndex, value ->
                         if (!isReadonly) {
                             if (selectedRows.size > 1 && selectedRows.contains(rowIndex)) {
-                                // Multi-select batch edit
                                 multiEditTarget = Triple(rowIndex, colIndex, value)
                             } else {
                                 editingCell = Triple(rowIndex, colIndex, value)
                             }
+                        } else {
+                            viewingCell = Triple(rowIndex, colIndex, value)
                         }
                     },
                     onColumnHeaderClick = { colIndex -> viewModel.toggleSort(colIndex) },
@@ -317,6 +320,16 @@ fun InlineDataEditorScreen(
                 editingCell = null
             },
             onDismiss = { editingCell = null }
+        )
+    }
+
+    viewingCell?.let { (_, colIndex, value) ->
+        val columnName = columns.getOrNull(colIndex)?.name ?: ""
+        CellViewDialog(
+            columnName = columnName,
+            value = value?.toString() ?: "NULL",
+            onCopy = { viewingCell = null },
+            onDismiss = { viewingCell = null }
         )
     }
 
@@ -803,18 +816,16 @@ private fun DataGrid(
                                         }
                                     },
                                     onTap = { offset ->
-                                        if (!isReadonly) {
-                                            val density = this@pointerInput
-                                            val rowNumPx = with(density) { rowNumWidth.toPx() }
-                                            val checkboxPx = with(density) { checkboxWidth.toPx() }
-                                            val cellPx = with(density) { cellWidth.toPx() }
-                                            val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
-                                            val colIdx = ((offset.x - startX) / cellPx).toInt()
-                                            if (colIdx in 0 until row.size) {
-                                                val staged = pendingEdits[rowIndex to colIdx]?.newValue
-                                                val cellValue = row.getOrNull(colIdx)
-                                                onCellClick(rowIndex, colIdx, if (staged != null) staged else cellValue)
-                                            }
+                                        val density = this@pointerInput
+                                        val rowNumPx = with(density) { rowNumWidth.toPx() }
+                                        val checkboxPx = with(density) { checkboxWidth.toPx() }
+                                        val cellPx = with(density) { cellWidth.toPx() }
+                                        val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
+                                        val colIdx = ((offset.x - startX) / cellPx).toInt()
+                                        if (colIdx in 0 until row.size) {
+                                            val staged = pendingEdits[rowIndex to colIdx]?.newValue
+                                            val cellValue = row.getOrNull(colIdx)
+                                            onCellClick(rowIndex, colIdx, if (staged != null) staged else cellValue)
                                         }
                                     }
                                 )
@@ -979,8 +990,10 @@ private fun CellEditDialog(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                minLines = 3,
+                maxLines = 10,
+                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
             )
         },
         confirmButton = {
@@ -993,6 +1006,49 @@ private fun CellEditDialog(
             TextButton(onClick = onDismiss) {
                 Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp)); Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun CellViewDialog(
+    columnName: String,
+    value: String,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    val ctx = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(columnName, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) },
+        text = {
+            SelectionContainer {
+                Text(
+                    text = value,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 80.dp, max = 400.dp)
+                        .verticalScroll(rememberScrollState()),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                clipboard.setText(AnnotatedString(value))
+                Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+                onDismiss()
+            }) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp)); Text("Copy")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp)); Text("Close")
             }
         }
     )
