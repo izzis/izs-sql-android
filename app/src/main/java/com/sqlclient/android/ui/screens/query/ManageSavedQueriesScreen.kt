@@ -137,11 +137,11 @@ fun ManageSavedQueriesScreen(
                     val json = buildBackupJson(savedQueries, profile.name)
                     context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Backup saved", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Export saved", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -163,7 +163,7 @@ fun ManageSavedQueriesScreen(
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -227,7 +227,7 @@ fun ManageSavedQueriesScreen(
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Backup")
+                    Text("Export")
                 }
                 OutlinedButton(
                     onClick = { restoreLauncher.launch(arrayOf("application/json")) },
@@ -235,7 +235,7 @@ fun ManageSavedQueriesScreen(
                 ) {
                     Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Restore")
+                    Text("Import")
                 }
             }
             HorizontalDivider()
