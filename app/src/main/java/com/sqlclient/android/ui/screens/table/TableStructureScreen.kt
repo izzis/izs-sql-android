@@ -1,6 +1,7 @@
 package com.sqlclient.android.ui.screens.table
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,8 +20,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -100,6 +103,7 @@ fun TableStructureScreen(
 
     var showCreateIndex by remember { mutableStateOf(false) }
     var indexToDelete by remember { mutableStateOf<IndexInfo?>(null) }
+    var editingColumn by remember { mutableStateOf<ColumnInfo?>(null) }
     var pendingSql by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -166,7 +170,7 @@ fun TableStructureScreen(
                 }
             } else {
                 when (selectedTab) {
-                    0 -> ColumnsTab(columns)
+                    0 -> ColumnsTab(columns, isLocked) { editingColumn = it }
                     1 -> DdlTab(createTable)
                     2 -> IndexesTabEditable(
                         indexes = if (idxIndexes.isNotEmpty()) idxIndexes else indexes,
@@ -220,6 +224,26 @@ fun TableStructureScreen(
         )
     }
 
+    editingColumn?.let { col ->
+        EditColumnDialog(
+            column = col,
+            onDismiss = { editingColumn = null },
+            onConfirm = { name, type, nullable, default, comment ->
+                if (isLocked) { editingColumn = null; return@EditColumnDialog }
+                val nullStr = if (nullable) "NULL" else "NOT NULL"
+                val defaultStr = if (default.isNotBlank()) " DEFAULT '${default.replace("'", "''")}'" else ""
+                val commentStr = if (comment.isNotBlank()) " COMMENT '${comment.replace("'", "''")}'" else ""
+                val colDef = "`$name` $type $nullStr$defaultStr$commentStr"
+                val sql = indexViewModel.buildModifyColumnSql(database, table, colDef)
+                pendingSql = sql
+                pendingAction = {
+                    indexViewModel.modifyColumn(database, table, colDef, isLocked = isLocked)
+                    editingColumn = null
+                }
+            }
+        )
+    }
+
     pendingSql?.let { sql ->
         val clipboard = LocalClipboardManager.current
         val ctx = LocalContext.current
@@ -252,7 +276,7 @@ fun TableStructureScreen(
 }
 
 @Composable
-private fun ColumnsTab(columns: List<ColumnInfo>) {
+private fun ColumnsTab(columns: List<ColumnInfo>, isLocked: Boolean = false, onEditColumn: (ColumnInfo) -> Unit = {}) {
     if (columns.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(text = "No columns found", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -267,15 +291,16 @@ private fun ColumnsTab(columns: List<ColumnInfo>) {
             Text(text = "Key", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.6f))
             Text(text = "Default", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Text(text = "Comment", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(0.3f))
         }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(columns) { column -> ColumnRow(column) }
+            items(columns) { column -> ColumnRow(column, isLocked, onEditColumn) }
         }
     }
 }
 
 @Composable
-private fun ColumnRow(column: ColumnInfo) {
+private fun ColumnRow(column: ColumnInfo, isLocked: Boolean = false, onEditColumn: (ColumnInfo) -> Unit = {}) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text = column.name, style = MaterialTheme.typography.bodyMedium, fontWeight = if (column.isPrimaryKey) FontWeight.Bold else FontWeight.Normal,
             color = if (column.isPrimaryKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -289,6 +314,10 @@ private fun ColumnRow(column: ColumnInfo) {
             color = if (column.defaultValue != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(text = column.comment ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        IconButton(onClick = { onEditColumn(column) }, enabled = !isLocked, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit column", modifier = Modifier.size(16.dp),
+                tint = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
@@ -378,5 +407,87 @@ private fun CreateIndexDialog(
             TextButton(onClick = { onConfirm(indexName, selectedColumns.toList(), isUnique) }, enabled = indexName.isNotBlank() && selectedColumns.isNotEmpty()) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun EditColumnDialog(
+    column: ColumnInfo,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, type: String, nullable: Boolean, defaultValue: String, comment: String) -> Unit
+) {
+    var name by remember { mutableStateOf(column.name) }
+    var type by remember { mutableStateOf(column.type) }
+    var nullable by remember { mutableStateOf(column.nullable) }
+    var defaultValue by remember { mutableStateOf(column.defaultValue ?: "") }
+    var comment by remember { mutableStateOf(column.comment ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Column: ${column.name}") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("Column Name") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = type, onValueChange = { type = it },
+                    label = { Text("Type") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Common types:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(4.dp))
+                val commonTypes = listOf("INT", "BIGINT", "SMALLINT", "TINYINT", "FLOAT", "DOUBLE", "DECIMAL(10,2)", "VARCHAR(255)", "CHAR(10)", "TEXT", "MEDIUMTEXT", "LONGTEXT", "DATE", "DATETIME", "TIMESTAMP", "TIME", "BOOLEAN", "JSON")
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(commonTypes.size) { idx ->
+                        val t = commonTypes[idx]
+                        androidx.compose.material3.FilterChip(
+                            selected = type.equals(t, ignoreCase = false),
+                            onClick = { type = t },
+                            label = { Text(t, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = defaultValue, onValueChange = { defaultValue = it },
+                    label = { Text("Default Value (optional)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = comment, onValueChange = { comment = it },
+                    label = { Text("Comment (optional)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = nullable, onCheckedChange = { nullable = it })
+                    Text("Nullable", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name, type, nullable, defaultValue, comment) },
+                enabled = name.isNotBlank() && type.isNotBlank()
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Modify")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Cancel")
+            }
+        }
     )
 }
