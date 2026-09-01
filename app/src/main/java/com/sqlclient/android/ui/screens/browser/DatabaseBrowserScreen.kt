@@ -276,8 +276,13 @@ fun DatabaseBrowserScreen(
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.weight(1f)
                                 )
-                                IconButton(onClick = { onOpenQuery(db, "_") }, modifier = Modifier.size(32.dp)) {
+                                Row(
+                                    modifier = Modifier.clickable { onOpenQuery(db, "_") },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(Icons.Default.Code, contentDescription = "SQL Editor", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("SQL Editor", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                             OutlinedTextField(
@@ -422,9 +427,6 @@ fun DatabaseBrowserScreen(
                                                         }
                                                     }
                                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        IconButton(onClick = { onOpenQuery(selectedDatabase!!, table) }, modifier = Modifier.size(32.dp)) {
-                                                            Icon(Icons.Default.Code, contentDescription = "Query", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                                                        }
                                                         IconButton(onClick = { onOpenTableStructure(selectedDatabase!!, table) }, modifier = Modifier.size(32.dp)) {
                                                             Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Structure", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
                                                         }

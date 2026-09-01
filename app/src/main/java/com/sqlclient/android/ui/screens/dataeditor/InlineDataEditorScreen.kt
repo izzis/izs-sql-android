@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.AlertDialog
@@ -86,12 +87,14 @@ import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
+import com.sqlclient.android.ui.viewmodel.QueryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InlineDataEditorScreen(
     viewModel: DataEditorViewModel,
     connectionViewModel: ConnectionViewModel,
+    queryViewModel: QueryViewModel,
     profile: ConnectionProfileEntity,
     database: String,
     table: String,
@@ -128,6 +131,9 @@ fun InlineDataEditorScreen(
     var showQueryEditor by remember { mutableStateOf(false) }
     var showWriteConfirm by remember { mutableStateOf(false) }
     var editableQuery by remember { mutableStateOf("") }
+    val savedQueries by queryViewModel.savedQueries.collectAsState()
+    var showSavedQueries by remember { mutableStateOf(false) }
+    var renamingQuery by remember { mutableStateOf<com.sqlclient.android.data.local.entity.QueryHistoryEntity?>(null) }
     val pendingEdits by viewModel.pendingEdits.collectAsState()
     val pendingDeletes by viewModel.pendingDeletes.collectAsState()
     val hasPending = pendingEdits.isNotEmpty() || pendingDeletes.isNotEmpty()
@@ -140,6 +146,10 @@ fun InlineDataEditorScreen(
 
     LaunchedEffect(database, table) {
         viewModel.loadData(database, table)
+    }
+
+    LaunchedEffect(profile.id) {
+        queryViewModel.setCurrentProfileId(profile.id)
     }
 
     LaunchedEffect(operationSuccess) {
@@ -205,7 +215,16 @@ fun InlineDataEditorScreen(
                 },
                 isExpanded = showQueryEditor,
                 onToggle = { showQueryEditor = !showQueryEditor },
-                enabled = !(isLocked && viewModel.isWriteQuery())
+                enabled = !(isLocked && viewModel.isWriteQuery()),
+                savedQueries = savedQueries,
+                showSavedQueries = showSavedQueries,
+                onToggleSavedQueries = { showSavedQueries = !showSavedQueries },
+                onSelectSavedQuery = { query ->
+                    editableQuery = query
+                    viewModel.setQuery(query)
+                },
+                onDeleteSavedQuery = { q -> queryViewModel.deleteSavedQuery(q) },
+                onRenameSavedQuery = { q -> renamingQuery = q }
             )
 
             WhereFilterBar(
@@ -492,6 +511,31 @@ fun InlineDataEditorScreen(
             dismissButton = { TextButton(onClick = { showWriteConfirm = false }) { Text("Cancel") } }
         )
     }
+
+    renamingQuery?.let { entity ->
+        var renameValue by remember { mutableStateOf(entity.name ?: entity.queryText.take(40)) }
+        AlertDialog(
+            onDismissRequest = { renamingQuery = null },
+            title = { Text("Rename Saved Query") },
+            text = {
+                OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    queryViewModel.renameSavedQuery(entity, renameValue)
+                    renamingQuery = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renamingQuery = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -501,7 +545,13 @@ private fun SqlEditorBar(
     onExecute: () -> Unit,
     isExpanded: Boolean,
     onToggle: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    savedQueries: List<com.sqlclient.android.data.local.entity.QueryHistoryEntity> = emptyList(),
+    showSavedQueries: Boolean = false,
+    onToggleSavedQueries: () -> Unit = {},
+    onSelectSavedQuery: (String) -> Unit = {},
+    onDeleteSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {},
+    onRenameSavedQuery: (com.sqlclient.android.data.local.entity.QueryHistoryEntity) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -526,6 +576,56 @@ private fun SqlEditorBar(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold
             )
+            if (savedQueries.isNotEmpty()) {
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { onToggleSavedQueries() }, modifier = Modifier.height(28.dp)) {
+                    Icon(
+                        imageVector = if (showSavedQueries) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text("Saved (${savedQueries.size})", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+
+        if (showSavedQueries && savedQueries.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).heightIn(max = 100.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(savedQueries.size) { idx ->
+                    val q = savedQueries[idx]
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = q.name ?: "Unnamed",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = q.queryText.take(40),
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant),
+                            modifier = Modifier.weight(1f).clickable { onSelectSavedQuery(q.queryText) },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        IconButton(onClick = { onRenameSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
+                        }
+                        IconButton(onClick = { onDeleteSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
         }
 
         if (isExpanded) {

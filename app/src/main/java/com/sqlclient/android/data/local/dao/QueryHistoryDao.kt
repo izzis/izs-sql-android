@@ -34,4 +34,7 @@ interface QueryHistoryDao {
 
     @Query("UPDATE query_history SET is_favorite = :isFavorite WHERE id = :id")
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean)
+
+    @Query("UPDATE query_history SET name = :name WHERE id = :id")
+    suspend fun renameHistory(id: Long, name: String)
 }

@@ -20,7 +20,7 @@ class QueryViewModel @Inject constructor(
     private val queryRepository: QueryRepository
 ) : ViewModel() {
 
-    private val _queryTabs = MutableStateFlow<List<QueryTab>>(listOf(QueryTab(id = 1, query = "SELECT * FROM ")))
+    private val _queryTabs = MutableStateFlow<List<QueryTab>>(listOf(QueryTab(id = 1, query = "")))
     val queryTabs: StateFlow<List<QueryTab>> = _queryTabs.asStateFlow()
 
     private val _activeTabId = MutableStateFlow(1L)
@@ -43,17 +43,20 @@ class QueryViewModel @Inject constructor(
     private val _savedQueries = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())
     val savedQueries: StateFlow<List<QueryHistoryEntity>> = _savedQueries.asStateFlow()
 
-    private var initializedForProfile: Long? = null
-
     fun setCurrentProfileId(profileId: Long) {
+        val prev = _currentProfileId.value
         _currentProfileId.value = profileId
-        if (initializedForProfile != profileId) {
+        if (prev != profileId) {
             loadFavorites(profileId)
         }
     }
 
     fun addTab() {
-        val newTab = QueryTab(id = nextTabId++, query = "")
+        val usedNumbers = _queryTabs.value.mapNotNull { tab ->
+            Regex("^Query (\\d+)$").find(tab.title)?.groupValues?.get(1)?.toIntOrNull()
+        }.toSet()
+        val nextNumber = (1..usedNumbers.size + 1).firstOrNull { it !in usedNumbers } ?: usedNumbers.size + 1
+        val newTab = QueryTab(id = nextTabId++, query = "", title = "Query $nextNumber")
         _queryTabs.value = _queryTabs.value + newTab
         _activeTabId.value = newTab.id
     }
@@ -80,6 +83,12 @@ class QueryViewModel @Inject constructor(
     fun updateQuery(tabId: Long, query: String) {
         _queryTabs.value = _queryTabs.value.map { tab ->
             if (tab.id == tabId) tab.copy(query = query) else tab
+        }
+    }
+
+    fun updateTabTitle(tabId: Long, title: String) {
+        _queryTabs.value = _queryTabs.value.map { tab ->
+            if (tab.id == tabId) tab.copy(title = title) else tab
         }
     }
 
@@ -128,11 +137,14 @@ class QueryViewModel @Inject constructor(
         }
     }
 
-    fun saveFavorite(query: String) {
+    fun saveFavorite(query: String, name: String? = null) {
         val profileId = _currentProfileId.value ?: return
         viewModelScope.launch {
             val id = queryRepository.saveToHistory(profileId, query)
             queryRepository.toggleFavorite(id, true)
+            if (!name.isNullOrBlank()) {
+                queryRepository.renameHistory(id, name)
+            }
             loadFavorites(profileId)
         }
     }
@@ -147,7 +159,8 @@ class QueryViewModel @Inject constructor(
     }
 
     fun openSavedQuery(entity: QueryHistoryEntity) {
-        val newTab = QueryTab(id = nextTabId++, query = entity.queryText)
+        val title = entity.name ?: "Query"
+        val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title)
         _queryTabs.value = _queryTabs.value + newTab
         _activeTabId.value = newTab.id
     }
@@ -160,13 +173,20 @@ class QueryViewModel @Inject constructor(
         }
     }
 
+    fun renameSavedQuery(entity: QueryHistoryEntity, newName: String) {
+        viewModelScope.launch {
+            queryRepository.renameHistory(entity.id, newName)
+            val profileId = _currentProfileId.value ?: return@launch
+            loadFavorites(profileId)
+        }
+    }
+
     fun clearAll() {
-        _queryTabs.value = listOf(QueryTab(id = 1, query = "SELECT * FROM "))
+        _queryTabs.value = listOf(QueryTab(id = 1, query = ""))
         _activeTabId.value = 1
         _queryResult.value = QueryResultState.Idle
         _isExecuting.value = false
         _currentProfileId.value = null
-        initializedForProfile = null
     }
 
     fun isWriteQuery(): Boolean {
@@ -181,17 +201,6 @@ class QueryViewModel @Inject constructor(
     fun getActiveQueryText(): String {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return ""
         return activeTab.query.trim()
-    }
-
-    fun setInitialQuery(database: String, table: String) {
-        val profileId = _currentProfileId.value
-        if (initializedForProfile == profileId && _queryTabs.value.isNotEmpty()) return
-        val query = if (table == "_") "SELECT * FROM `$database`." else "SELECT * FROM `$database`.`$table`"
-        _currentQuery.value = listOf(query)
-        _queryTabs.value = listOf(QueryTab(id = 1, query = query))
-        _activeTabId.value = 1
-        nextTabId = 2
-        initializedForProfile = profileId
     }
 }
 

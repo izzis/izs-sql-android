@@ -226,6 +226,7 @@ fun NavGraph(themeManager: ThemeManager) {
                 InlineDataEditorScreen(
                     viewModel = dataEditorViewModel,
                     connectionViewModel = connectionViewModel,
+                    queryViewModel = queryViewModel,
                     profile = currentProfile,
                     database = database,
                     table = table,

@@ -42,6 +42,10 @@ class QueryRepository @Inject constructor(
         historyDao.toggleFavorite(historyId, isFavorite)
     }
 
+    suspend fun renameHistory(historyId: Long, name: String) {
+        historyDao.renameHistory(historyId, name)
+    }
+
     suspend fun deleteHistory(history: QueryHistoryEntity) {
         historyDao.deleteHistory(history)
     }

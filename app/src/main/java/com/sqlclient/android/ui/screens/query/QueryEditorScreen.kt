@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -31,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -58,6 +60,7 @@ import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.DataTable
 import com.sqlclient.android.ui.components.QueryTabBar
 import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.data.local.entity.QueryHistoryEntity
 import com.sqlclient.android.ui.components.SqlEditor
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.QueryResultState
@@ -89,10 +92,6 @@ fun QueryEditorScreen(
         viewModel.setCurrentProfileId(profile.id)
     }
 
-    LaunchedEffect(database, table) {
-        viewModel.setInitialQuery(database, table)
-    }
-
     val snackbarHostState = remember { SnackbarHostState() }
 
     val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
@@ -111,6 +110,8 @@ fun QueryEditorScreen(
     val currentQuery by viewModel.currentQuery.collectAsState()
     var showFavorites by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(true) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var renamingQuery by remember { mutableStateOf<QueryHistoryEntity?>(null) }
     Scaffold(
         topBar = {
             AppTopBar(
@@ -127,7 +128,7 @@ fun QueryEditorScreen(
                 showLock = true,
                 onToggleLock = onToggleLock,
                 onBack = onBack,
-                onSave = if (activeTab?.query.isNullOrBlank() == false) ({ viewModel.saveFavorite(activeTab!!.query) }) else null,
+                onSave = if (activeTab?.query.isNullOrBlank() == false) ({ showSaveDialog = true }) else null,
                 onReconnect = onReconnect,
                 isReconnecting = isReconnecting
             )
@@ -190,14 +191,24 @@ fun QueryEditorScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = q.queryText.take(60),
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                text = q.name ?: "Unnamed",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = q.queryText.take(40),
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant),
                                 modifier = Modifier.weight(1f).clickable { viewModel.openSavedQuery(q) },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            IconButton(onClick = { viewModel.deleteSavedQuery(q) }, modifier = Modifier.size(18.dp)) {
-                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(10.dp))
+                            IconButton(onClick = { renamingQuery = q }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(onClick = { viewModel.deleteSavedQuery(q) }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -297,6 +308,78 @@ fun QueryEditorScreen(
                         }
                     )
                 }
+            }
+
+            if (showSaveDialog) {
+                var saveName by remember { mutableStateOf(activeTab?.title?.take(40) ?: "") }
+                AlertDialog(
+                    onDismissRequest = { showSaveDialog = false },
+                    title = { Text("Save Query") },
+                    text = {
+                        Column {
+                            Text("Name:", style = MaterialTheme.typography.labelMedium)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = saveName,
+                                onValueChange = { saveName = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Query:", style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                text = activeTab?.query ?: "",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                                    .padding(8.dp),
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showSaveDialog = false
+                            val q = activeTab?.query ?: return@TextButton
+                            val name = saveName.ifBlank { null }
+                            viewModel.saveFavorite(q, name)
+                            if (name != null && activeTab != null) {
+                                viewModel.updateTabTitle(activeTab!!.id, name)
+                            }
+                        }) { Text("Save") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSaveDialog = false }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            if (renamingQuery != null) {
+                var renameText by remember { mutableStateOf(renamingQuery!!.name ?: "") }
+                AlertDialog(
+                    onDismissRequest = { renamingQuery = null },
+                    title = { Text("Rename Query") },
+                    text = {
+                        OutlinedTextField(
+                            value = renameText,
+                            onValueChange = { renameText = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.renameSavedQuery(renamingQuery!!, renameText)
+                            renamingQuery = null
+                        }) { Text("Rename") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renamingQuery = null }) { Text("Cancel") }
+                    }
+                )
             }
 
             when (val result = queryResult) {

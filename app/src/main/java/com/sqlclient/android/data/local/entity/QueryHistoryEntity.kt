@@ -31,6 +31,9 @@ data class QueryHistoryEntity(
     @ColumnInfo(name = "is_favorite")
     val isFavorite: Boolean = false,
 
+    @ColumnInfo(name = "name")
+    val name: String? = null,
+
     @ColumnInfo(name = "executed_at")
     val executedAt: Long = System.currentTimeMillis()
 )
