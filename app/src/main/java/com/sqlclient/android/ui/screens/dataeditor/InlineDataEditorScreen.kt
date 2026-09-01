@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -191,12 +192,11 @@ fun InlineDataEditorScreen(
             ReconnectBanner(message = reconnectMessage)
             SqlEditorBar(
                 query = editableQuery,
-                onQueryChange = { editableQuery = it },
+                onQueryChange = {
+                    editableQuery = it
+                    viewModel.setQuery(it)
+                },
                 onExecute = {
-                    viewModel.setQuery(editableQuery)
-                    if (viewModel.isWriteQuery() && isLocked) {
-                        return@SqlEditorBar
-                    }
                     if (viewModel.isWriteQuery()) {
                         showWriteConfirm = true
                     } else {
@@ -204,7 +204,8 @@ fun InlineDataEditorScreen(
                     }
                 },
                 isExpanded = showQueryEditor,
-                onToggle = { showQueryEditor = !showQueryEditor }
+                onToggle = { showQueryEditor = !showQueryEditor },
+                enabled = !(isLocked && viewModel.isWriteQuery())
             )
 
             WhereFilterBar(
@@ -499,7 +500,8 @@ private fun SqlEditorBar(
     onQueryChange: (String) -> Unit,
     onExecute: () -> Unit,
     isExpanded: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    enabled: Boolean = true
 ) {
     Column(
         modifier = Modifier
@@ -548,7 +550,13 @@ private fun SqlEditorBar(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onExecute) {
+                    TextButton(
+                        onClick = onExecute,
+                        enabled = enabled,
+                        colors = ButtonDefaults.textButtonColors(
+                            disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    ) {
                         Icon(
                             Icons.Default.PlayArrow,
                             contentDescription = null,

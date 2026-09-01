@@ -234,10 +234,6 @@ fun QueryEditorScreen(
                 ) {
                     Button(
                         onClick = {
-                            if (isLocked && viewModel.isWriteQuery()) {
-                                viewModel.executeQuery(isLocked = true)
-                                return@Button
-                            }
                             if (viewModel.isWriteQuery()) {
                                 showWriteConfirm = true
                             } else {
