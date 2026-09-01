@@ -549,8 +549,8 @@ private fun parseBackupJson(text: String): List<Triple<String?, String?, String>
     val result = mutableListOf<Triple<String?, String?, String>>()
     for (i in 0 until arr.length()) {
         val obj = arr.getJSONObject(i)
-        val name = if (obj.isNull("name")) null else obj.optString("name", null)
-        val db = if (obj.isNull("database")) null else obj.optString("database", null)
+        val name = if (obj.isNull("name")) null else obj.optString("name").takeIf { it.isNotEmpty() }
+        val db = if (obj.isNull("database")) null else obj.optString("database").takeIf { it.isNotEmpty() }
         val sql = obj.getString("query_text")
         result.add(Triple(name, db, sql))
     }
