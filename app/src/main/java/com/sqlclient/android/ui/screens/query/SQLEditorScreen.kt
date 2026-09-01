@@ -154,15 +154,15 @@ fun SQLEditorScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { showEditor = !showEditor }, modifier = Modifier.size(24.dp)) {
+                IconButton(onClick = { showEditor = !showEditor }, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = if (showEditor) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = if (showEditor) "Hide editor" else "Show editor",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text("Editor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Editor", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (savedQueries.isNotEmpty()) {
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = { showFavorites = !showFavorites }) {
@@ -255,11 +255,12 @@ fun SQLEditorScreen(
                         enabled = !isExecuting && !(isLocked && viewModel.isWriteQuery()),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
-                        )
+                        ),
+                        contentPadding = ButtonDefaults.TextButtonWithIconContentPadding
                     ) {
                         if (isExecuting) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(14.dp),
                                 color = Color.White,
                                 strokeWidth = 2.dp
                             )
@@ -267,10 +268,11 @@ fun SQLEditorScreen(
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = "Execute",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         }
-                        Text("Execute")
+                        Spacer(Modifier.width(4.dp))
+                        Text("Execute", style = MaterialTheme.typography.labelMedium)
                     }
                 }
 
