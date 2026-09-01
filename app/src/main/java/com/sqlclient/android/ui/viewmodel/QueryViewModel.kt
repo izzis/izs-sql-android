@@ -169,10 +169,6 @@ class QueryViewModel @Inject constructor(
         initializedForProfile = null
     }
 
-    fun clearResult() {
-        _queryResult.value = QueryResultState.Idle
-    }
-
     fun isWriteQuery(): Boolean {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return false
         val query = activeTab.query.trim().uppercase()
@@ -196,13 +192,6 @@ class QueryViewModel @Inject constructor(
         _activeTabId.value = 1
         nextTabId = 2
         initializedForProfile = profileId
-    }
-
-    fun openNewEditor(database: String? = null) {
-        val query = if (database != null) "SELECT * FROM `$database`." else ""
-        val newTab = QueryTab(id = nextTabId++, query = query)
-        _queryTabs.value = _queryTabs.value + newTab
-        _activeTabId.value = newTab.id
     }
 }
 

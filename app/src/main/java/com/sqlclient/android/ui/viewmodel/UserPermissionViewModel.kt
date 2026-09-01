@@ -172,48 +172,6 @@ class UserPermissionViewModel @Inject constructor(
         }
     }
 
-    private suspend fun parseUserPrivileges(user: String, host: String): UserInfo {
-        var selectPriv = false
-        var insertPriv = false
-        var updatePriv = false
-        var deletePriv = false
-        var createPriv = false
-        var dropPriv = false
-        var alterPriv = false
-        var indexPriv = false
-
-        when (val result = connectionManager.executeQuery("SHOW GRANTS FOR `$user`@`$host`")) {
-            is QueryResult.Success -> {
-                result.rows.forEach { row ->
-                    val grant = row[0].toString().uppercase()
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("SELECT")) selectPriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("INSERT")) insertPriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("UPDATE")) updatePriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("DELETE")) deletePriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("CREATE")) createPriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("DROP")) dropPriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("ALTER")) alterPriv = true
-                    if (grant.contains("ALL PRIVILEGES") || grant.contains("INDEX")) indexPriv = true
-                }
-            }
-            is QueryResult.Error -> {}
-            else -> {}
-        }
-
-        return UserInfo(
-            user = user,
-            host = host,
-            selectPriv = selectPriv,
-            insertPriv = insertPriv,
-            updatePriv = updatePriv,
-            deletePriv = deletePriv,
-            createPriv = createPriv,
-            dropPriv = dropPriv,
-            alterPriv = alterPriv,
-            indexPriv = indexPriv
-        )
-    }
-
     fun loadGrants(user: String, host: String) {
         _currentQuery.value = listOf("SHOW GRANTS FOR `$user`@`$host`")
         viewModelScope.launch {

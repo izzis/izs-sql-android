@@ -373,23 +373,6 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun refresh() {
-        _databases.value = emptyList()
-        _visibleDatabases.value = emptyList()
-        _tables.value = emptyMap()
-        _columns.value = emptyMap()
-        _indexes.value = emptyMap()
-        _tableSizes.value = emptyMap()
-        _expandedDatabases.value = emptySet()
-        _expandedTables.value = emptySet()
-        _selectedDatabase.value = null
-        _hasLoadedDatabases.value = false
-        _privilegeSet.value = null
-        _currentQuery.value = emptyList()
-        privilegeResolver.invalidate()
-        loadDatabases(force = true)
-    }
-
     fun clearAll() {
         _databases.value = emptyList()
         _visibleDatabases.value = emptyList()

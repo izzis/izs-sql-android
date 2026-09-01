@@ -467,9 +467,6 @@ class DataEditorViewModel @Inject constructor(
         _query.value = newQuery
     }
 
-    fun setLimit(newLimit: Int) {
-        _dataLimit.value = newLimit.coerceIn(1, 10000)
-    }
 
     fun executeCustomQuery() {
         val sql = _query.value.trim()
@@ -563,12 +560,6 @@ class DataEditorViewModel @Inject constructor(
         }
     }
 
-    fun reload() {
-        if (currentDatabase.isNotEmpty() && currentTable.isNotEmpty()) {
-            loadData(currentDatabase, currentTable)
-        }
-    }
-
     private suspend fun loadColumnInfo(database: String, table: String) {
         autoIncrementColumn = null
         pkColumnIndex = -1
@@ -604,28 +595,6 @@ class DataEditorViewModel @Inject constructor(
         }
     }
 
-    fun updateCell(database: String, table: String, pkColumn: String, pkValue: Any?, column: String, newValue: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _error.value = null
-            try {
-                val pkStr = formatSqlValue(pkValue)
-                val newValStr = formatSqlValue(newValue)
-                val sql = "UPDATE `$database`.`$table` SET `$column` = $newValStr WHERE `$pkColumn` = $pkStr"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "Cell updated"
-                        loadData(database, table)
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Update failed: ${e.message}"
-            }
-        }
-    }
 
     fun insertRow(database: String, table: String, values: Map<String, String>, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
@@ -646,59 +615,6 @@ class DataEditorViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _error.value = "Insert failed: ${e.message}"
-            }
-        }
-    }
-
-    fun deleteRow(database: String, table: String, pkColumn: String, pkValue: Any?, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _error.value = null
-            try {
-                val pkStr = formatSqlValue(pkValue)
-                val sql = "DELETE FROM `$database`.`$table` WHERE `$pkColumn` = $pkStr"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "Row deleted"
-                        loadData(database, table)
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Delete failed: ${e.message}"
-            }
-        }
-    }
-
-    fun deleteSelectedRows(database: String, table: String, pkColumn: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        val selected = _selectedRows.value
-        if (selected.isEmpty()) return
-
-        val currentRows = _rows.value
-        viewModelScope.launch {
-            _error.value = null
-            try {
-                val pkValues = selected.mapNotNull { index ->
-                    currentRows.getOrNull(index)?.getOrNull(pkColumnIndex)?.let { formatSqlValue(it) }
-                }
-                if (pkValues.isEmpty()) return@launch
-
-                val sql = "DELETE FROM `$database`.`$table` WHERE `$pkColumn` IN (${pkValues.joinToString(", ")})"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "${selected.size} row(s) deleted"
-                        _selectedRows.value = emptySet()
-                        loadData(database, table)
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Delete failed: ${e.message}"
             }
         }
     }
