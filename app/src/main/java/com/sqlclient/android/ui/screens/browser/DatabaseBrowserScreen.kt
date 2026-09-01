@@ -262,7 +262,9 @@ fun DatabaseBrowserScreen(
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.weight(1f)
                                 )
-                                // Manual refresh via TopBar only — no duplicate button here
+                                IconButton(onClick = { onOpenQuery(db, "_") }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.Code, contentDescription = "SQL Editor", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                }
                             }
                             OutlinedTextField(
                                 value = tableSearchQuery,
