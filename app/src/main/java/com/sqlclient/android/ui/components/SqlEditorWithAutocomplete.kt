@@ -157,8 +157,8 @@ private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
         secondLast == "INSERT" && last == "INTO" -> SqlContext.AFTER_INSERT
         last == "UPDATE" -> SqlContext.AFTER_UPDATE
         secondLast == "DELETE" && last == "FROM" -> SqlContext.AFTER_DELETE
-        last == "ORDER" || (secondLast == "ORDER" && last == "BY") -> SqlContext.AFTER_ORDER
-        last == "GROUP" || (secondLast == "GROUP" && last == "BY") -> SqlContext.AFTER_GROUP
+        secondLast == "ORDER" && last == "BY" -> SqlContext.AFTER_ORDER
+        secondLast == "GROUP" && last == "BY" -> SqlContext.AFTER_GROUP
         last in OPERATORS -> resolveContextAfterValue(words.dropLast(1))
         else -> SqlContext.GENERIC
     }
@@ -556,10 +556,29 @@ fun SqlEditorWithAutocomplete(
                 SqlContext.AFTER_DOT -> {}
                 else -> {}
             }
+            // ORDER/GROUP -> suggest BY after trailing space (e.g., "ORDER " -> "BY")
+            run {
+                val rawBefore = text.substring(0, cursorPos.coerceAtMost(text.length))
+                val hasTrailingSpace = rawBefore.isNotEmpty() && rawBefore.last().isWhitespace()
+                if (hasTrailingSpace) {
+                    val wordsTrim = rawBefore.trimEnd().split(Regex("\\s+")).filter { it.isNotEmpty() }
+                    val lastW = wordsTrim.lastOrNull()?.uppercase()?.trimEnd(',', ';', '(') ?: ""
+                    if (lastW == "ORDER" || lastW == "GROUP") {
+                        items += SuggestionItem("BY", "BY", SuggestionType.KEYWORD, 1)
+                    }
+                }
+            }
+            // ord -> ORDER BY single tap
+            if (currentWord.isNotEmpty() && "ORDER BY".startsWith(currentWord.uppercase())) {
+                items += SuggestionItem("ORDER BY", "ORDER BY", SuggestionType.KEYWORD, 1)
+            }
+            if (currentWord.isNotEmpty() && "GROUP BY".startsWith(currentWord.uppercase())) {
+                items += SuggestionItem("GROUP BY", "GROUP BY", SuggestionType.KEYWORD, 1)
+            }
             if (currentWord.isNotEmpty()) {
                 val allowedKeywords: Set<String>? = when (ctx) {
                     SqlContext.START -> null
-                    SqlContext.AFTER_SELECT -> setOf("FROM", "WHERE", "DISTINCT", "AS", "ALL", "TOP", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "ORDER", "GROUP", "LIMIT", "OFFSET", "HAVING")
+                    SqlContext.AFTER_SELECT -> setOf("FROM", "WHERE", "DISTINCT", "AS", "ALL", "TOP", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "ORDER", "GROUP", "ORDER BY", "GROUP BY", "LIMIT", "OFFSET", "HAVING")
                     SqlContext.AFTER_FROM -> setOf("JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "ON", "WHERE", "GROUP", "ORDER", "LIMIT", "OFFSET")
                     SqlContext.AFTER_JOIN -> setOf("ON", "AND")
                     SqlContext.AFTER_WHERE -> setOf("AND", "OR", "IS", "NOT", "LIKE", "IN", "BETWEEN", "ORDER", "GROUP", "LIMIT", "OFFSET")
@@ -573,8 +592,10 @@ fun SqlEditorWithAutocomplete(
                     else -> null
                 }
                 val keywords = if (readOnly) SQL_KEYWORD_LIST.filter { it !in WRITE_KEYWORDS } else SQL_KEYWORD_LIST
+                val hideOrder = currentWord.isNotEmpty() && "ORDER BY".startsWith(currentWord.uppercase())
+                val hideGroup = currentWord.isNotEmpty() && "GROUP BY".startsWith(currentWord.uppercase())
                 items += keywords
-                    .filter { (allowedKeywords == null || it in allowedKeywords) && it.startsWith(currentWord, ignoreCase = true) }
+                    .filter { (allowedKeywords == null || it in allowedKeywords) && it.startsWith(currentWord, ignoreCase = true) && !(hideOrder && it == "ORDER") && !(hideGroup && it == "GROUP") }
                     .take(4)
                     .map { SuggestionItem(it, it, SuggestionType.KEYWORD, 10) }
             }
