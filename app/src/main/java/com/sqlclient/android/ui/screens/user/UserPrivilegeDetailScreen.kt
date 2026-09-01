@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -155,8 +157,10 @@ fun UserPrivilegeDetailScreen(
                     for (priv in PRIVS) if (effectiveChecked(priv, k)) return true
                 }
             }
-            // also check any pending table key that may not be in dbTables yet
             val prefix = "${db.lowercase()}."
+            for ((k, v) in onToPrivs) {
+                if (k.startsWith(prefix) && k != dbKey.lowercase() && v.isNotEmpty()) return true
+            }
             for ((pk, want) in pendingPrivChanges) {
                 if (!want) continue
                 val on = pk.substringAfter("@", "")
@@ -215,7 +219,7 @@ fun UserPrivilegeDetailScreen(
                         Text(db, style = MaterialTheme.typography.bodyMedium, fontWeight = if (boldDb) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
                         TextButton(onClick = { expandedPriv = if (expandedPriv == db) null else db }, enabled = true) { Text(if (expandedPriv == db) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
                         IconButton(onClick = { val e = expandedDb == db; expandedDb = if (e) null else db; if (!e) viewModel.loadTablesForDb(db) }, modifier = Modifier.size(28.dp)) {
-                            Icon(if (expandedDb == db) Icons.Default.Close else Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(if (expandedDb == db) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
                     }
                     if (expandedPriv == db) {
