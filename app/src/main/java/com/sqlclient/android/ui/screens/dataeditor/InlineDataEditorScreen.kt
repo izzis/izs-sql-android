@@ -996,14 +996,14 @@ private fun DataGrid(
         if (columns.isEmpty()) emptyList() else {
             val sample = displayRows.take(30)
             columns.mapIndexed { idx, col ->
-                val headerW = col.name.length * 8 + 16
+                val headerW = col.name.length * 8 + 24
                 var maxDataLen = 0
                 for (r in sample) {
-                    val l = r.getOrNull(idx)?.length ?: 0
-                    if (l > maxDataLen) maxDataLen = l
+                    val len = r.getOrNull(idx)?.length ?: 0
+                    if (len > maxDataLen) maxDataLen = len
                 }
-                val dataW = maxDataLen * 7 + 16
-                maxOf(headerW, dataW).coerceIn(80, 300).dp
+                val dataW = maxDataLen * 8 + 24
+                maxOf(headerW, dataW).coerceIn(90, 360).dp
             }
         }
     }

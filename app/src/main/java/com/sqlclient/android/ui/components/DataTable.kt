@@ -47,11 +47,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sqlclient.android.data.remote.ColumnMetadata
 
-private const val MIN_COL_DP = 80
-private const val MAX_COL_DP = 300
+private const val MIN_COL_DP = 90
+private const val MAX_COL_DP = 360
 private const val HEADER_CHAR_DP = 8
-private const val DATA_CHAR_DP = 7
-private const val CELL_H_PADDING_DP = 16
+private const val DATA_CHAR_DP = 8
+private const val CELL_H_PADDING_DP = 24
 private const val SAMPLE_ROWS = 30
 
 @Composable
