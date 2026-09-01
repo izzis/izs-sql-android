@@ -347,7 +347,7 @@ fun SQLEditorScreen(
                             val q = activeTab?.query ?: return@TextButton
                             val name = saveName.ifBlank { null }
                             viewModel.saveFavorite(q, name)
-                            if (name != null && activeTab != null) {
+                            if (name != null) {
                                 viewModel.updateTabTitle(activeTab!!.id, name)
                             }
                         }) { Text("Save") }
