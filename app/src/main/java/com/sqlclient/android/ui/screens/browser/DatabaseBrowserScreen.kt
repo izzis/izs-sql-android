@@ -540,11 +540,11 @@ fun DatabaseBrowserScreen(
                         userViewModel = userViewModel,
                         isLocked = isLocked,
                         onOpenUserDetail = onOpenUserDetail,
-                        modifier = Modifier.padding(paddingValues)
+                        modifier = Modifier
                     )
                 }
                 BrowserPanel.HISTORY -> {
-                    HistoryPanel(viewModel = viewModel, modifier = Modifier.padding(paddingValues))
+                    HistoryPanel(viewModel = viewModel, modifier = Modifier)
                 }
                 }
             }
