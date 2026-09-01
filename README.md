@@ -34,8 +34,8 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.jcraft:jsch:0.1.55`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
 - **Database browser** — sidebar (`AppSidebar`/`DatabaseTree`) + main panel; database/table lists are **privilege-filtered** via `PrivilegeResolver` (`PrivilegeSet`), manual refresh, `windowInsets` cache.
 - **Table inspection** — `SHOW TABLES` / `SHOW FULL COLUMNS FROM db.table` lazy-loaded on expand (columns/indexes), `SYSTEM_SCHEMAS` filtered out.
-- **Query editor** — monospace editor with history tab, current-query bar at the bottom, syntax-agnostic (single `statement.execute(sql)`; no client-side parsing), 30 s timeout, read-only guard. Write queries (INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/etc.) show a confirm dialog before execution. TopBar refresh re-executes only read queries.
-- **Inline data editor** — paginated `LIMIT/OFFSET` grid (limit presets 100/200/500/1000) with infinite scroll (`snapshotFlow` + `loadMore`), **quick WHERE filter** (`WHERE <raw>`) + column autocomplete chips, per-cell edit (dialog), batch staging (see below), row select/delete, query-timing in the status bar. Built-in SQL editor bar for custom queries — write queries show confirm dialog before execution.
+- **SQL editor with autocomplete** — monospace editor with syntax highlighting (`SqlSyntaxHighlight` tokenizer + `VisualTransformation`), context-aware autocomplete dropdown (`SqlEditorWithAutocomplete`): SQL keywords, dot-prefix `db.table.column` navigation, backtick/quote identifiers, multi-table column merge across FROM/JOIN clauses, JOIN ON autocomplete with columns from all joined tables. Write queries show a confirm dialog before execution. TopBar refresh re-executes only read queries.
+- **Inline data editor** — paginated `LIMIT/OFFSET` grid (limit presets 100/200/500/1000) with infinite scroll (`snapshotFlow` + `loadMore`), **quick WHERE filter** (`WHERE <raw>`) with lite autocomplete chips, per-cell edit (dialog), batch staging (see below), row select/delete, query-timing in the status bar. Built-in SQL editor bar for custom queries — write queries show confirm dialog before execution.
 - **Batch write flow** — every write goes through **Save → Confirm → Execute**: edits/deletes are staged locally (red `errorContainer` highlight in the grid / bold for privileges) until the top-bar **Save** (Check icon) opens a multi-statement SQL preview; Execute commits sequentially with per-statement `currentQuery` updates.
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
 - **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
@@ -240,6 +240,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   │   └── NavGraph.kt                 # NavHost routes, threads sessionLocked to all destinations
 │       │   ├── ui/
 │       │   │   ├── components/                 # AppTopBar, AppSidebar/DatabaseTree, DataTable, SqlEditor,
+│       │   │   │                              # SqlEditorWithAutocomplete, SqlSyntaxHighlight,
 │       │   │   │                              # CurrentQueryBar, QueryTabBar, ConnectionCard
 │       │   │   ├── screens/
 │       │   │   │   ├── browser/DatabaseBrowserScreen.kt
@@ -369,7 +370,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 | `connection/new` | Create connection | `ui/screens/connection/ConnectionEditorScreen.kt` | Build `ConnectionProfileEntity` + credential snapshot (id `999999` for Test) |
 | `connection/edit/{profileId}` | Edit connection | same | `remember(profile.id)` for `isReadonly` checkbox |
 | `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state |
-| `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Editor + history tabs, Execute, timing |
+| `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Editor + autocomplete + history tabs, Execute, timing |
 | `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
@@ -502,7 +503,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 
 ### 3. History Panel (query history browser)
 
-**Status:** `HistoryPanel` composable is a placeholder (`"Query history will appear here"`) at `DatabaseBrowserScreen.kt:715-719`. The data layer is fully wired: `QueryHistoryDao.getHistoryByConnection()`, `QueryRepository.getHistoryByConnection()`, `QueryHistoryEntity` with `id`, `connectionProfileId`, `query`, `executedAt`.
+**Status:** `HistoryPanel` composable is a placeholder (`"Query history will appear here"`) at `DatabaseBrowserScreen.kt:715-719`. The data layer is fully wired: `QueryHistoryDao.getHistoryByConnection()`, `QueryRepository.getHistoryByConnection()`, `QueryHistoryEntity` with `id`, `connectionProfileId`, `query`, `executedAt`, `database` (saved queries scoped per database).
 
 **Where to add UI:** Replace the placeholder `HistoryPanel` with a `LazyColumn` that calls `viewModel.getHistory(profileId)` (needs a new method on `BrowserViewModel` that delegates to `QueryRepository`). Display `QueryHistoryEntity.query` + `executedAt` with tap-to-copy.
 
