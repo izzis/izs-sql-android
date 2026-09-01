@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -86,6 +87,7 @@ import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.DatabaseTree
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel.BrowserPanel
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 import kotlinx.coroutines.launch
 
@@ -94,6 +96,7 @@ import kotlinx.coroutines.launch
 fun DatabaseBrowserScreen(
     viewModel: BrowserViewModel,
     userViewModel: UserPermissionViewModel,
+    connectionViewModel: ConnectionViewModel,
     profile: ConnectionProfileEntity,
     onDisconnect: () -> Unit,
     isLocked: Boolean,
@@ -105,6 +108,7 @@ fun DatabaseBrowserScreen(
     onReconnect: (() -> Unit)? = null,
     isReconnecting: Boolean = false
 ) {
+    val context = LocalContext.current
     val databases by viewModel.databases.collectAsState()
     val visibleDatabases by viewModel.visibleDatabases.collectAsState()
     val tables by viewModel.tables.collectAsState()
@@ -153,6 +157,14 @@ fun DatabaseBrowserScreen(
         error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
         }
     }
 
@@ -238,10 +250,12 @@ fun DatabaseBrowserScreen(
                 CurrentQueryBar(queries = browserQuery)
             }
         ) { paddingValues ->
+            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                com.sqlclient.android.ui.components.ReconnectBanner(message = reconnectMessage)
             when (activePanel) {
-                BrowserPanel.TABLE_INFO -> {
-                    // Main content: Database list on left-style + Table list for selected DB
-                    Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                    BrowserPanel.TABLE_INFO -> {
+                        // Main content: Database list on left-style + Table list for selected DB
+                        Column(modifier = Modifier.fillMaxSize()) {
                         // Selected DB header with table search + refresh
                         if (selectedDatabase != null) {
                             val db = selectedDatabase!!
@@ -529,6 +543,7 @@ fun DatabaseBrowserScreen(
                 }
                 BrowserPanel.HISTORY -> {
                     HistoryPanel(viewModel = viewModel, modifier = Modifier.padding(paddingValues))
+                }
                 }
             }
         }

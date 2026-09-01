@@ -45,6 +45,9 @@ class ConnectionViewModel @Inject constructor(
     private val _isReconnecting = MutableStateFlow(false)
     val isReconnecting: StateFlow<Boolean> = _isReconnecting.asStateFlow()
 
+    private val _reconnectMessage = MutableStateFlow<String?>(null)
+    val reconnectMessage: StateFlow<String?> = _reconnectMessage.asStateFlow()
+
     private val _connectingProfileId = MutableStateFlow<Long?>(null)
     val connectingProfileId: StateFlow<Long?> = _connectingProfileId.asStateFlow()
 
@@ -162,12 +165,18 @@ class ConnectionViewModel @Inject constructor(
                 is ConnectionResult.Success -> {
                     _sessionLocked.value = profile.isReadonly
                     _isReconnecting.value = false
+                    _reconnectMessage.value = "Reconnected"
                 }
                 is ConnectionResult.Error -> {
                     _isReconnecting.value = false
+                    _reconnectMessage.value = "Reconnect failed"
                 }
             }
         }
+    }
+
+    fun clearReconnectMessage() {
+        _reconnectMessage.value = null
     }
 
     fun disconnect() {

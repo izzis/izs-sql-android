@@ -55,6 +55,8 @@ import android.widget.Toast
 import com.sqlclient.android.data.remote.model.UserInfo
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
+import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 
 private val PRIVS = listOf("SELECT","INSERT","UPDATE","DELETE","CREATE","DROP","ALTER","INDEX")
@@ -62,6 +64,7 @@ private val PRIVS = listOf("SELECT","INSERT","UPDATE","DELETE","CREATE","DROP","
 @Composable
 fun UserPrivilegeDetailScreen(
     viewModel: UserPermissionViewModel,
+    connectionViewModel: ConnectionViewModel,
     user: String,
     host: String,
     isLocked: Boolean = false,
@@ -93,6 +96,14 @@ fun UserPrivilegeDetailScreen(
     }
     LaunchedEffect(error) {
         error?.let { snackbarHostState.showSnackbar(it); viewModel.clearError() }
+    }
+
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
     }
 
     // Parse grants into sets per target: key = normalized ON part (e.g. "*.*", "mydb.*", "mydb.mytable")
@@ -190,6 +201,7 @@ fun UserPrivilegeDetailScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState()).padding(12.dp)
         ) {
+            ReconnectBanner(message = reconnectMessage)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { showRenameDialog = true }) { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Rename") }
                 TextButton(onClick = { showPasswordDialog = true }) { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Password") }

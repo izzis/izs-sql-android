@@ -2,6 +2,7 @@ package com.sqlclient.android.ui.screens.table
 
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
+import com.sqlclient.android.ui.components.ReconnectBanner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,12 +70,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.sqlclient.android.data.remote.model.IndexInfo
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.IndexManagementViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IndexManagementScreen(
     viewModel: IndexManagementViewModel,
+    connectionViewModel: ConnectionViewModel,
     database: String,
     table: String,
     isLocked: Boolean = false,
@@ -120,6 +123,14 @@ fun IndexManagementScreen(
         }
     }
 
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
             AppTopBar(
@@ -155,6 +166,7 @@ fun IndexManagementScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            ReconnectBanner(message = reconnectMessage)
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, title ->
                     Tab(

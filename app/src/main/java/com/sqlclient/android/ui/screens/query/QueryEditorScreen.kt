@@ -32,6 +32,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,7 +57,9 @@ import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.DataTable
 import com.sqlclient.android.ui.components.QueryTabBar
+import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.components.SqlEditor
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.QueryResultState
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
 
@@ -63,6 +67,7 @@ import com.sqlclient.android.ui.viewmodel.QueryViewModel
 @Composable
 fun QueryEditorScreen(
     viewModel: QueryViewModel,
+    connectionViewModel: ConnectionViewModel,
     profile: ConnectionProfileEntity,
     database: String,
     table: String,
@@ -86,6 +91,16 @@ fun QueryEditorScreen(
 
     LaunchedEffect(database, table) {
         viewModel.setInitialQuery(database, table)
+    }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
     }
 
     val topBarColor = try {
@@ -117,13 +132,15 @@ fun QueryEditorScreen(
                 isReconnecting = isReconnecting
             )
         },
-        bottomBar = { CurrentQueryBar(queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query)) }
+        bottomBar = { CurrentQueryBar(queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query)) },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            ReconnectBanner(message = reconnectMessage)
             QueryTabBar(
                 tabs = queryTabs,
                 activeTabId = activeTabId,

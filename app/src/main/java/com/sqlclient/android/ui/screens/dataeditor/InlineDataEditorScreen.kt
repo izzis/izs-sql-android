@@ -82,12 +82,15 @@ import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
+import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InlineDataEditorScreen(
     viewModel: DataEditorViewModel,
+    connectionViewModel: ConnectionViewModel,
     profile: ConnectionProfileEntity,
     database: String,
     table: String,
@@ -145,6 +148,14 @@ fun InlineDataEditorScreen(
         }
     }
 
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
+    }
+
     val topBarColor = try {
         androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(profile.color))
     } catch (_: Exception) {
@@ -177,6 +188,7 @@ fun InlineDataEditorScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            ReconnectBanner(message = reconnectMessage)
             SqlEditorBar(
                 query = editableQuery,
                 onQueryChange = { editableQuery = it },

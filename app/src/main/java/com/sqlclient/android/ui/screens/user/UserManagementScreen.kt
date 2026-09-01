@@ -69,12 +69,15 @@ import android.widget.Toast
 import com.sqlclient.android.data.remote.model.UserInfo
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
+import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserManagementScreen(
     viewModel: UserPermissionViewModel,
+    connectionViewModel: ConnectionViewModel,
     isLocked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
@@ -117,6 +120,14 @@ fun UserManagementScreen(
         }
     }
 
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
             AppTopBar(
@@ -152,6 +163,7 @@ fun UserManagementScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            ReconnectBanner(message = reconnectMessage)
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, title ->
                     Tab(

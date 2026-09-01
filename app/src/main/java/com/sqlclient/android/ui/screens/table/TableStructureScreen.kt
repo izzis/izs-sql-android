@@ -65,6 +65,8 @@ import com.sqlclient.android.data.remote.model.ColumnInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
+import com.sqlclient.android.ui.components.ReconnectBanner
+import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.IndexManagementViewModel
 import com.sqlclient.android.ui.viewmodel.TableStructureViewModel
 
@@ -73,6 +75,7 @@ import com.sqlclient.android.ui.viewmodel.TableStructureViewModel
 fun TableStructureScreen(
     viewModel: TableStructureViewModel,
     indexViewModel: IndexManagementViewModel,
+    connectionViewModel: ConnectionViewModel,
     database: String,
     table: String,
     isLocked: Boolean = false,
@@ -123,6 +126,14 @@ fun TableStructureScreen(
         idxSuccess?.let { snackbarHostState.showSnackbar(it); indexViewModel.clearSuccess() }
     }
 
+    val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
+    LaunchedEffect(reconnectMessage) {
+        reconnectMessage?.let {
+            kotlinx.coroutines.delay(2000)
+            connectionViewModel.clearReconnectMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
             AppTopBar(
@@ -158,6 +169,7 @@ fun TableStructureScreen(
         }
     ) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            ReconnectBanner(message = reconnectMessage)
             TabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, title ->
                     Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title) })

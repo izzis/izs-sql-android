@@ -117,6 +117,7 @@ fun NavGraph(themeManager: ThemeManager) {
                 DatabaseBrowserScreen(
                     viewModel = browserViewModel,
                     userViewModel = userPermissionViewModel,
+                    connectionViewModel = connectionViewModel,
                     profile = currentProfile,
                     onDisconnect = {
                         connectionViewModel.disconnect()
@@ -162,6 +163,7 @@ fun NavGraph(themeManager: ThemeManager) {
             if (currentProfile != null) {
                 QueryEditorScreen(
                     viewModel = queryViewModel,
+                    connectionViewModel = connectionViewModel,
                     profile = currentProfile,
                     database = database,
                     table = table,
@@ -194,6 +196,7 @@ fun NavGraph(themeManager: ThemeManager) {
             TableStructureScreen(
                 viewModel = tableStructureViewModel,
                 indexViewModel = structureIndexViewModel,
+                connectionViewModel = connectionViewModel,
                 database = database,
                 table = table,
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
@@ -222,6 +225,7 @@ fun NavGraph(themeManager: ThemeManager) {
             if (currentProfile != null) {
                 InlineDataEditorScreen(
                     viewModel = dataEditorViewModel,
+                    connectionViewModel = connectionViewModel,
                     profile = currentProfile,
                     database = database,
                     table = table,
@@ -240,6 +244,7 @@ fun NavGraph(themeManager: ThemeManager) {
 
             UserManagementScreen(
                 viewModel = userPermissionViewModel,
+                connectionViewModel = connectionViewModel,
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
@@ -261,6 +266,7 @@ fun NavGraph(themeManager: ThemeManager) {
             val vm: UserPermissionViewModel = hiltViewModel()
             UserPrivilegeDetailScreen(
                 viewModel = vm,
+                connectionViewModel = connectionViewModel,
                 user = user,
                 host = host,
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
@@ -289,6 +295,7 @@ fun NavGraph(themeManager: ThemeManager) {
             }
             IndexManagementScreen(
                 viewModel = indexManagementViewModel,
+                connectionViewModel = connectionViewModel,
                 database = database,
                 table = table,
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
