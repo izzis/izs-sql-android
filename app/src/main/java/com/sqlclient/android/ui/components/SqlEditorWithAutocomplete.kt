@@ -74,6 +74,41 @@ private enum class SqlContext {
     AFTER_ON, GENERIC
 }
 
+private val OPERATORS = setOf("=", "!=", "<>", "<", ">", "<=", ">=", "||", "+", "-", "*", "/")
+
+private val NON_CONTEXT_KEYWORDS = setOf(
+    "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
+    "DEFAULT", "ENGINE", "CHARSET", "IF", "EXISTS", "AS", "DISTINCT",
+    "COUNT", "SUM", "AVG", "MIN", "MAX", "NOT", "NULL", "IS",
+    "IN", "LIKE", "BETWEEN", "CASE", "WHEN", "THEN", "ELSE", "END",
+    "ANY", "SOME", "TOP", "NATURAL", "USING", "FULL", "TABLE",
+    "INDEX", "DATABASE", "DESC", "ASC", "EXPLAIN", "SHOW", "DESCRIBE"
+)
+
+private fun resolveContextAfterValue(words: List<String>): SqlContext {
+    for (i in words.indices.reversed()) {
+        val w = words[i].uppercase().trimEnd(',', ';', '(', ')', '\'', '"')
+        if (w in OPERATORS) continue
+        if (w in NON_CONTEXT_KEYWORDS) continue
+        if (w == "AND" || w == "OR") return SqlContext.AFTER_WHERE
+        if (w == "WHERE") return SqlContext.AFTER_WHERE
+        if (w == "ON") return SqlContext.AFTER_ON
+        if (w == "SET") return SqlContext.AFTER_SET
+        if (w == "BY") {
+            if (i > 0) {
+                val prev = words[i - 1].uppercase().trimEnd(',')
+                if (prev == "ORDER") return SqlContext.AFTER_ORDER
+                if (prev == "GROUP") return SqlContext.AFTER_GROUP
+            }
+            return SqlContext.GENERIC
+        }
+        if (w == "SELECT") return SqlContext.AFTER_SELECT
+        if (w == "FROM") return SqlContext.AFTER_FROM
+        if (w in setOf("JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS")) return SqlContext.AFTER_JOIN
+    }
+    return SqlContext.GENERIC
+}
+
 private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
     val rawBefore = text.substring(0, cursorPos.coerceAtMost(text.length))
     val textBefore = rawBefore.trimEnd()
@@ -104,7 +139,10 @@ private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
                 else if (thirdLast == "GROUP") SqlContext.AFTER_GROUP
                 else SqlContext.GENERIC
             }
-            else -> SqlContext.GENERIC
+            else -> {
+                // secondLast is an operator or string literal — look back further
+                resolveContextAfterValue(words)
+            }
         }
     }
 
@@ -121,25 +159,32 @@ private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
         secondLast == "DELETE" && last == "FROM" -> SqlContext.AFTER_DELETE
         last == "ORDER" || (secondLast == "ORDER" && last == "BY") -> SqlContext.AFTER_ORDER
         last == "GROUP" || (secondLast == "GROUP" && last == "BY") -> SqlContext.AFTER_GROUP
+        last in OPERATORS -> resolveContextAfterValue(words.dropLast(1))
         else -> SqlContext.GENERIC
     }
 }
 
-private val KEYWORD_SET = setOf(
+private val SQL_KEYWORD_LIST = listOf(
     "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES",
     "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
     "TABLE", "INDEX", "DATABASE", "JOIN", "LEFT", "RIGHT",
     "INNER", "OUTER", "ON", "AND", "OR", "NOT", "NULL",
-    "IS", "IN", "LIKE", "BETWEEN", "ORDER", "GROUP",
-    "HAVING", "LIMIT", "OFFSET", "AS", "DISTINCT",
-    "UNION", "ALL", "EXPLAIN", "SHOW", "DESCRIBE",
-    "DESC", "ASC", "CROSS", "FULL", "NATURAL", "USING",
-    "CASE", "WHEN", "THEN", "ELSE", "END"
+    "IS", "IN", "LIKE", "BETWEEN", "ORDER", "BY", "GROUP",
+    "HAVING", "LIMIT", "OFFSET", "AS", "DISTINCT", "COUNT",
+    "SUM", "AVG", "MIN", "MAX", "IF", "EXISTS", "PRIMARY",
+    "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
+    "DEFAULT", "ENGINE", "CHARSET", "DESC", "ASC", "UNION",
+    "ALL", "EXPLAIN", "SHOW", "DESCRIBE", "TRUNCATE", "RENAME",
+    "GRANT", "REVOKE", "COMMIT", "ROLLBACK", "BEGIN", "TRANSACTION",
+    "CASE", "WHEN", "THEN", "ELSE", "END", "ANY", "SOME",
+    "TOP", "FULL", "CROSS", "NATURAL", "USING"
 )
+
+private val KEYWORD_SET = SQL_KEYWORD_LIST.toSet()
 
 private fun extractAliases(text: String): Map<String, String> {
     val pattern = Regex(
-        """(?:FROM|JOIN)\s+`?(\w+)`?\s+(?:AS\s+)?`?(\w+)`?""",
+        """(?:FROM|JOIN)\s+`?(\w+(?:\.\w+)?)`?\s+(?:AS\s+)?`?(\w+)`?""",
         RegexOption.IGNORE_CASE
     )
     return pattern.findAll(text).associate {
@@ -485,7 +530,7 @@ fun SqlEditorWithAutocomplete(
             )
             var resolvedColumns = columnNames
             if (needsColumns && onFetchExtraColumns != null) {
-                val tablePattern = Regex("""(?:FROM|JOIN)\s+`?(\w+)`?""", RegexOption.IGNORE_CASE)
+                val tablePattern = Regex("""(?:FROM|JOIN)\s+`?(\w+(?:\.\w+)?)`?""", RegexOption.IGNORE_CASE)
                 val contextTables = tablePattern.findAll(text).map { it.groupValues[1] }.toList()
                 if (contextTables.isNotEmpty()) {
                     val allCols = mutableListOf<String>()
@@ -615,20 +660,4 @@ fun SqlEditorWithAutocomplete(
 private val WRITE_KEYWORDS = setOf(
     "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP",
     "TRUNCATE", "RENAME", "GRANT", "REVOKE"
-)
-
-private val SQL_KEYWORD_LIST = listOf(
-    "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES",
-    "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
-    "TABLE", "INDEX", "DATABASE", "JOIN", "LEFT", "RIGHT",
-    "INNER", "OUTER", "ON", "AND", "OR", "NOT", "NULL",
-    "IS", "IN", "LIKE", "BETWEEN", "ORDER", "BY", "GROUP",
-    "HAVING", "LIMIT", "OFFSET", "AS", "DISTINCT", "COUNT",
-    "SUM", "AVG", "MIN", "MAX", "IF", "EXISTS", "PRIMARY",
-    "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "UNIQUE",
-    "DEFAULT", "ENGINE", "CHARSET", "DESC", "ASC", "UNION",
-    "ALL", "EXPLAIN", "SHOW", "DESCRIBE", "TRUNCATE", "RENAME",
-    "GRANT", "REVOKE", "COMMIT", "ROLLBACK", "BEGIN", "TRANSACTION",
-    "CASE", "WHEN", "THEN", "ELSE", "END", "ANY", "SOME",
-    "TOP", "FULL", "CROSS", "NATURAL", "USING"
 )

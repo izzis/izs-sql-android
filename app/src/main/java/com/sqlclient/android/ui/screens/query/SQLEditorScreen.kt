@@ -137,9 +137,15 @@ fun SQLEditorScreen(
     }
     val fetchExtraColumns: (suspend (String) -> List<String>?)? = if (enableAutocomplete) {
         { tableName: String ->
-            val key = "$database.$tableName"
+            val (dbName, tblName) = if (tableName.contains('.')) {
+                val parts = tableName.split('.', limit = 2)
+                parts[0] to parts[1]
+            } else {
+                database to tableName
+            }
+            val key = "$dbName.$tblName"
             columnCache[key] ?: run {
-                val fetched = viewModel.fetchColumns(database, tableName)
+                val fetched = viewModel.fetchColumns(dbName, tblName)
                 if (fetched != null) columnCache = columnCache + (key to fetched)
                 fetched
             }
