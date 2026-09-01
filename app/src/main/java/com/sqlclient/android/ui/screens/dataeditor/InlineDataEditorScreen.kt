@@ -986,12 +986,26 @@ private fun DataGrid(
 ) {
     val horizontalScrollState = rememberScrollState()
     val lazyListState = rememberLazyListState()
-    val cellWidth = 150.dp
     val rowNumWidth = 48.dp
     val checkboxWidth = 48.dp
     val rowHeight = 40.dp
     val displayRows = androidx.compose.runtime.remember(rows) {
         rows.map { r -> r.map { v -> if (v == null) "NULL" else { val s = v.toString(); if (s.length > 200) s.take(200) + "…" else s } } }
+    }
+    val columnWidths: List<androidx.compose.ui.unit.Dp> = remember(columns, displayRows) {
+        if (columns.isEmpty()) emptyList() else {
+            val sample = displayRows.take(30)
+            columns.mapIndexed { idx, col ->
+                val headerW = col.name.length * 8 + 16
+                var maxDataLen = 0
+                for (r in sample) {
+                    val l = r.getOrNull(idx)?.length ?: 0
+                    if (l > maxDataLen) maxDataLen = l
+                }
+                val dataW = maxDataLen * 7 + 16
+                maxOf(headerW, dataW).coerceIn(80, 300).dp
+            }
+        }
     }
     var contextMenuRow by remember { mutableStateOf<Int?>(null) }
     var contextMenuColIndex by remember { mutableStateOf<Int?>(null) } // null = row number, >= 0 = cell column
@@ -1041,8 +1055,9 @@ private fun DataGrid(
                     }
                     columns.forEachIndexed { colIndex, column ->
                         val isSorted = sortColumn == colIndex
+                        val colW = columnWidths.getOrNull(colIndex) ?: 150.dp
                         Box(
-                            modifier = Modifier.width(cellWidth).height(rowHeight).padding(horizontal = 8.dp)
+                            modifier = Modifier.width(colW).height(rowHeight).padding(horizontal = 8.dp)
                                 .clickable { onColumnHeaderClick(colIndex) },
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -1072,7 +1087,7 @@ private fun DataGrid(
                         val displayRow = displayRows.getOrNull(rowIndex) ?: emptyList()
                         val isContextMenuTarget = contextMenuRow == rowIndex
                         Column {
-                            Box(modifier = Modifier.pointerInput(rowIndex, isReadonly, row.size) {
+                            Box(modifier = Modifier.pointerInput(rowIndex, isReadonly, row.size, columnWidths) {
                                 detectTapGestures(
                                     onLongPress = { offset ->
                                         val rowNumPx = with(this@pointerInput) { rowNumWidth.toPx() }
@@ -1080,19 +1095,30 @@ private fun DataGrid(
                                         contextMenuRow = rowIndex
                                         contextMenuColIndex = if (isRowNumber) null else {
                                             val checkboxPx = with(this@pointerInput) { checkboxWidth.toPx() }
-                                            val cellPx = with(this@pointerInput) { cellWidth.toPx() }
+                                            val widthsPx = with(this@pointerInput) { columnWidths.map { it.toPx() } }
                                             val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
-                                            val idx = ((offset.x - startX) / cellPx).toInt()
-                                            if (idx in 0 until row.size) idx else null
+                                            var acc = startX
+                                            var found: Int? = null
+                                            for (i in widthsPx.indices) {
+                                                val next = acc + widthsPx[i]
+                                                if (offset.x >= acc && offset.x < next) { found = i; break }
+                                                acc = next
+                                            }
+                                            if (found != null && found in 0 until row.size) found else null
                                         }
                                     },
                                     onTap = { offset ->
-                                        val density = this@pointerInput
-                                        val rowNumPx = with(density) { rowNumWidth.toPx() }
-                                        val checkboxPx = with(density) { checkboxWidth.toPx() }
-                                        val cellPx = with(density) { cellWidth.toPx() }
+                                        val rowNumPx = with(this@pointerInput) { rowNumWidth.toPx() }
+                                        val checkboxPx = with(this@pointerInput) { checkboxWidth.toPx() }
+                                        val widthsPx = with(this@pointerInput) { columnWidths.map { it.toPx() } }
                                         val startX = rowNumPx + if (!isReadonly) checkboxPx else 0f
-                                        val colIdx = ((offset.x - startX) / cellPx).toInt()
+                                        var acc = startX
+                                        var colIdx = -1
+                                        for (i in widthsPx.indices) {
+                                            val next = acc + widthsPx[i]
+                                            if (offset.x >= acc && offset.x < next) { colIdx = i; break }
+                                            acc = next
+                                        }
                                         if (colIdx in 0 until row.size) {
                                             val staged = pendingEdits[rowIndex to colIdx]?.newValue
                                             val cellValue = row.getOrNull(colIdx)
@@ -1140,8 +1166,9 @@ private fun DataGrid(
                                             isPending -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
                                             else -> androidx.compose.ui.graphics.Color.Transparent
                                         }
+                                        val colW2 = columnWidths.getOrNull(colIndex) ?: 150.dp
                                         Box(
-                                            modifier = Modifier.width(cellWidth).height(rowHeight)
+                                            modifier = Modifier.width(colW2).height(rowHeight)
                                                 .background(bg)
                                                 .padding(horizontal = 8.dp),
                                             contentAlignment = Alignment.CenterStart

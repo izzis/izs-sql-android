@@ -282,10 +282,11 @@ fun SQLEditorScreen(
 
             if (showEditor) {
                 activeTab?.let { tab ->
-                    var queryText by remember(tab.id) { mutableStateOf(TextFieldValue(tab.query)) }
-                    LaunchedEffect(tab.query) {
+                    var queryText by remember(tab.id, tab.cursorOffset) { mutableStateOf(TextFieldValue(tab.query, selection = TextRange((tab.cursorOffset ?: tab.query.length).coerceIn(0, tab.query.length)))) }
+                    LaunchedEffect(tab.query, tab.cursorOffset) {
                         if (queryText.text != tab.query) {
-                            queryText = TextFieldValue(tab.query, selection = TextRange(tab.query.length))
+                            val pos = (tab.cursorOffset ?: tab.query.length).coerceIn(0, tab.query.length)
+                            queryText = TextFieldValue(tab.query, selection = TextRange(pos))
                         }
                     }
 
@@ -516,7 +517,12 @@ fun SQLEditorScreen(
                         DataTable(
                             columns = result.columns,
                             rows = result.rows,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            database = database,
+                            table = table,
+                            onQuickUpdate = { col, row ->
+                                viewModel.openQuickUpdate(database, table, col, row, result.columns)
+                            }
                         )
                     }
                 }

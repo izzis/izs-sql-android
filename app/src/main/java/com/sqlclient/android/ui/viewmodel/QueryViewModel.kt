@@ -327,6 +327,35 @@ class QueryViewModel @Inject constructor(
             }
         } catch (_: Exception) { null }
     }
+
+    fun openQuickUpdate(
+        database: String,
+        table: String,
+        targetColumn: String,
+        row: List<Any?>,
+        columns: List<ColumnMetadata>
+    ) {
+        if (database.isBlank()) return
+        val effectiveTable = if (table.isBlank() || table == "_") "TABLE_NAME" else table
+        val idx = columns.indexOfFirst { it.name == targetColumn }
+        val oldRaw = row.getOrNull(idx)?.toString() ?: ""
+        val escapedOld = oldRaw.replace("'", "''")
+        val where = columns.mapIndexedNotNull { cIdx, col ->
+            val v = row.getOrNull(cIdx)
+            if (v == null) "`${col.name}` IS NULL" else "`${col.name}` = '${v.toString().replace("'", "''")}'"
+        }.joinToString(" AND ")
+        val sql = if (where.isBlank()) {
+            "UPDATE `$database`.`$effectiveTable` SET `$targetColumn` = '$escapedOld'"
+        } else {
+            "UPDATE `$database`.`$effectiveTable` SET `$targetColumn` = '$escapedOld' WHERE $where;"
+        }
+        val prefix = "UPDATE `$database`.`$effectiveTable` SET `$targetColumn` = '"
+        val cursor = (prefix.length + escapedOld.length).coerceIn(0, sql.length)
+        val title = "Update $targetColumn"
+        val newTab = QueryTab(id = nextTabId++, query = sql, title = title, database = database, cursorOffset = cursor)
+        _queryTabs.value = _queryTabs.value + newTab
+        _activeTabId.value = newTab.id
+    }
 }
 
 data class QueryTab(
@@ -334,7 +363,8 @@ data class QueryTab(
     val query: String,
     val title: String = "Query ${id}",
     val savedQueryId: Long? = null,
-    val database: String? = null
+    val database: String? = null,
+    val cursorOffset: Int? = null
 )
 
 sealed class QueryResultState {
