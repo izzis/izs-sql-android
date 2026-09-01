@@ -70,7 +70,8 @@ data class SuggestionItem(
 private enum class SqlContext {
     START, AFTER_SELECT, AFTER_FROM, AFTER_JOIN,
     AFTER_WHERE, AFTER_SET, AFTER_INSERT, AFTER_UPDATE,
-    AFTER_DELETE, AFTER_ORDER, AFTER_GROUP, AFTER_DOT, GENERIC
+    AFTER_DELETE, AFTER_ORDER, AFTER_GROUP, AFTER_DOT,
+    AFTER_ON, GENERIC
 }
 
 private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
@@ -95,6 +96,7 @@ private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
             "FROM" -> SqlContext.AFTER_FROM
             "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS" -> SqlContext.AFTER_JOIN
             "WHERE", "AND", "OR" -> SqlContext.AFTER_WHERE
+            "ON" -> SqlContext.AFTER_ON
             "SET" -> SqlContext.AFTER_SET
             "BY" -> {
                 val thirdLast = if (words.size >= 3) words[words.size - 3].uppercase().trimEnd(',') else ""
@@ -112,6 +114,7 @@ private fun detectSqlContext(text: String, cursorPos: Int): SqlContext {
         last == "FROM" -> SqlContext.AFTER_FROM
         last in setOf("JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS") -> SqlContext.AFTER_JOIN
         last == "WHERE" || last == "AND" || last == "OR" -> SqlContext.AFTER_WHERE
+        last == "ON" -> SqlContext.AFTER_ON
         last == "SET" -> SqlContext.AFTER_SET
         secondLast == "INSERT" && last == "INTO" -> SqlContext.AFTER_INSERT
         last == "UPDATE" -> SqlContext.AFTER_UPDATE
@@ -478,18 +481,21 @@ fun SqlEditorWithAutocomplete(
             // Resolve columns from SQL context: find table names from FROM/JOIN
             val needsColumns = ctx in setOf(
                 SqlContext.AFTER_SELECT, SqlContext.AFTER_WHERE, SqlContext.AFTER_SET,
-                SqlContext.AFTER_ORDER, SqlContext.AFTER_GROUP
+                SqlContext.AFTER_ORDER, SqlContext.AFTER_GROUP, SqlContext.AFTER_ON
             )
             var resolvedColumns = columnNames
             if (needsColumns && onFetchExtraColumns != null) {
                 val tablePattern = Regex("""(?:FROM|JOIN)\s+`?(\w+)`?""", RegexOption.IGNORE_CASE)
                 val contextTables = tablePattern.findAll(text).map { it.groupValues[1] }.toList()
                 if (contextTables.isNotEmpty()) {
-                    val lastTable = contextTables.last()
+                    val allCols = mutableListOf<String>()
                     isLoadingColumns = true
-                    val fetchedCols = try { onFetchExtraColumns.invoke(lastTable) } catch (_: Exception) { null }
+                    for (tbl in contextTables) {
+                        val fetchedCols = try { onFetchExtraColumns.invoke(tbl) } catch (_: Exception) { null }
+                        if (fetchedCols != null) allCols.addAll(fetchedCols)
+                    }
                     isLoadingColumns = false
-                    if (fetchedCols != null) resolvedColumns = fetchedCols
+                    if (allCols.isNotEmpty()) resolvedColumns = allCols.distinct()
                 }
             }
 
@@ -499,7 +505,7 @@ fun SqlEditorWithAutocomplete(
                     items += databaseNames.map { SuggestionItem(it, it, SuggestionType.DATABASE, 5) }
                 }
                 SqlContext.AFTER_SELECT, SqlContext.AFTER_WHERE, SqlContext.AFTER_SET,
-                SqlContext.AFTER_ORDER, SqlContext.AFTER_GROUP -> {
+                SqlContext.AFTER_ORDER, SqlContext.AFTER_GROUP, SqlContext.AFTER_ON -> {
                     items += resolvedColumns.map { SuggestionItem(it, it, SuggestionType.COLUMN, 1) }
                 }
                 SqlContext.AFTER_DOT -> {}
@@ -518,6 +524,7 @@ fun SqlEditorWithAutocomplete(
                     SqlContext.AFTER_DELETE -> emptySet()
                     SqlContext.AFTER_ORDER -> setOf("ASC", "DESC", "LIMIT", "OFFSET")
                     SqlContext.AFTER_GROUP -> setOf("HAVING", "ORDER", "LIMIT", "OFFSET")
+                    SqlContext.AFTER_ON -> setOf("AND", "OR", "ORDER", "GROUP", "LIMIT", "OFFSET")
                     else -> null
                 }
                 val keywords = if (readOnly) SQL_KEYWORD_LIST.filter { it !in WRITE_KEYWORDS } else SQL_KEYWORD_LIST
