@@ -232,8 +232,10 @@ class BrowserViewModel @Inject constructor(
 
     suspend fun requestTablesSync(database: String): List<String>? {
         if (_tables.value.containsKey(database)) return _tables.value[database]
+        val sql = "SHOW TABLES IN `$database`"
+        _currentQuery.value = _currentQuery.value + sql
         return try {
-            when (val result = connectionManager.executeQueryIfFree("SHOW TABLES IN `$database`")) {
+            when (val result = connectionManager.executeQueryIfFree(sql)) {
                 is QueryResult.Success -> {
                     val names = result.rows.map { it[0].toString() }
                     _tables.value = _tables.value + (database to names)
