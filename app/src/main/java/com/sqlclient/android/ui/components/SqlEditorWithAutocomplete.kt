@@ -559,7 +559,7 @@ fun SqlEditorWithAutocomplete(
             if (currentWord.isNotEmpty()) {
                 val allowedKeywords: Set<String>? = when (ctx) {
                     SqlContext.START -> null
-                    SqlContext.AFTER_SELECT -> setOf("DISTINCT", "AS", "ALL", "TOP")
+                    SqlContext.AFTER_SELECT -> setOf("FROM", "WHERE", "DISTINCT", "AS", "ALL", "TOP", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "ORDER", "GROUP", "LIMIT", "OFFSET", "HAVING")
                     SqlContext.AFTER_FROM -> setOf("JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "ON", "WHERE", "GROUP", "ORDER", "LIMIT", "OFFSET")
                     SqlContext.AFTER_JOIN -> setOf("ON", "AND")
                     SqlContext.AFTER_WHERE -> setOf("AND", "OR", "IS", "NOT", "LIKE", "IN", "BETWEEN", "ORDER", "GROUP", "LIMIT", "OFFSET")

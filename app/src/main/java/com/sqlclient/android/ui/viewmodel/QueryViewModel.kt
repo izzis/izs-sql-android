@@ -134,7 +134,7 @@ class QueryViewModel @Inject constructor(
         val sql = "USE `$database`"
         _currentQuery.value = listOf(sql)
         viewModelScope.launch {
-            try { connectionManager.executeQueryIfFree(sql) } catch (_: Exception) {}
+            try { connectionManager.executeQuery(sql) } catch (_: Exception) {}
         }
     }
 
