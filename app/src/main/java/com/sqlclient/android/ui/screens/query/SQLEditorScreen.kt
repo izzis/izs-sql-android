@@ -68,7 +68,7 @@ import com.sqlclient.android.ui.viewmodel.QueryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QueryEditorScreen(
+fun SQLEditorScreen(
     viewModel: QueryViewModel,
     connectionViewModel: ConnectionViewModel,
     profile: ConnectionProfileEntity,
@@ -115,7 +115,7 @@ fun QueryEditorScreen(
     Scaffold(
         topBar = {
             AppTopBar(
-                title = "Query Editor",
+                title = "SQL Editor",
                 subtitle = "$database.$table",
                 containerColor = topBarColor,
                 onRefresh = {
@@ -187,6 +187,7 @@ fun QueryEditorScreen(
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp)
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                .clickable { viewModel.openSavedQuery(q) }
                                 .padding(horizontal = 6.dp, vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -200,7 +201,7 @@ fun QueryEditorScreen(
                             Text(
                                 text = q.queryText.take(40),
                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant),
-                                modifier = Modifier.weight(1f).clickable { viewModel.openSavedQuery(q) },
+                                modifier = Modifier.weight(1f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )

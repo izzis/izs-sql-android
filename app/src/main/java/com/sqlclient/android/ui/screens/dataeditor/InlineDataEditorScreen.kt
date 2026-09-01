@@ -128,7 +128,7 @@ fun InlineDataEditorScreen(
     var pendingSql by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showSaveConfirm by remember { mutableStateOf(false) }
-    var showQueryEditor by remember { mutableStateOf(false) }
+    var showSQLEditor by remember { mutableStateOf(false) }
     var showWriteConfirm by remember { mutableStateOf(false) }
     var editableQuery by remember { mutableStateOf("") }
     val savedQueries by queryViewModel.savedQueries.collectAsState()
@@ -213,8 +213,8 @@ fun InlineDataEditorScreen(
                         viewModel.executeCustomQuery()
                     }
                 },
-                isExpanded = showQueryEditor,
-                onToggle = { showQueryEditor = !showQueryEditor },
+                isExpanded = showSQLEditor,
+                onToggle = { showSQLEditor = !showSQLEditor },
                 enabled = !(isLocked && viewModel.isWriteQuery()),
                 savedQueries = savedQueries,
                 showSavedQueries = showSavedQueries,
@@ -600,6 +600,7 @@ private fun SqlEditorBar(
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                            .clickable { onSelectSavedQuery(q.queryText) }
                             .padding(horizontal = 6.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -613,7 +614,7 @@ private fun SqlEditorBar(
                         Text(
                             text = q.queryText.take(40),
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant),
-                            modifier = Modifier.weight(1f).clickable { onSelectSavedQuery(q.queryText) },
+                            modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

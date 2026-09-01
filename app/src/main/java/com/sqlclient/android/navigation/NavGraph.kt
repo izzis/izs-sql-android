@@ -18,7 +18,7 @@ import com.sqlclient.android.ui.screens.browser.DatabaseBrowserScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionEditorScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionListScreen
 import com.sqlclient.android.ui.screens.dataeditor.InlineDataEditorScreen
-import com.sqlclient.android.ui.screens.query.QueryEditorScreen
+import com.sqlclient.android.ui.screens.query.SQLEditorScreen
 import com.sqlclient.android.ui.screens.table.IndexManagementScreen
 import com.sqlclient.android.ui.screens.table.TableStructureScreen
 import com.sqlclient.android.ui.screens.user.UserManagementScreen
@@ -161,7 +161,7 @@ fun NavGraph(themeManager: ThemeManager) {
             val currentProfile = (connectionState as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
 
             if (currentProfile != null) {
-                QueryEditorScreen(
+                SQLEditorScreen(
                     viewModel = queryViewModel,
                     connectionViewModel = connectionViewModel,
                     profile = currentProfile,

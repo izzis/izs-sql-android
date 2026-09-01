@@ -245,7 +245,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   │   │   ├── browser/DatabaseBrowserScreen.kt
 │       │   │   │   ├── connection/ConnectionListScreen.kt, ConnectionEditorScreen.kt
 │       │   │   │   ├── dataeditor/InlineDataEditorScreen.kt
-│       │   │   │   ├── query/QueryEditorScreen.kt
+│       │   │   │   ├── query/SQLEditorScreen.kt
 │       │   │   │   ├── table/TableStructureScreen.kt, IndexManagementScreen.kt
 │       │   │   │   ├── user/UserManagementScreen.kt, UserPrivilegeDetailScreen.kt
 │       │   │   │   ├── export/, settings/
@@ -315,7 +315,7 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 ### Current query bar
 
-`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `QueryEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
+`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
 
 - `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy.
 - `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`.
@@ -333,7 +333,7 @@ Every write query that mutates the server **must** follow these rules:
 1. **SQL preview before execution** — The user must see the exact SQL before it is sent. This is done via:
    - `pendingSql` pattern: dialog shows SQL with "Execute" button (used by InsertRow, Grant/Revoke, Create/Drop/Rename User, Change Password, Create/Drop Index, Rename Table, Add/Drop Column).
    - `showSaveConfirm` pattern: batch staging shows all pending SQL in `Confirm Write (N)` dialog (used by DataEditor staged edits/deletes, privilege detail batch changes).
-   - `showWriteConfirm` pattern: SQL editor bars detect write queries via `isWriteQuery()` and show a confirm dialog before executing (used by QueryEditorScreen Execute button and DataEditorScreen SQL editor bar).
+   - `showWriteConfirm` pattern: SQL editor bars detect write queries via `isWriteQuery()` and show a confirm dialog before executing (used by SQLEditorScreen Execute button and DataEditorScreen SQL editor bar).
 
 2. **Confirm button required** — Every write path must have an explicit user action (tap "Execute" in a dialog) before the query reaches the server. No write query should execute on a simple button tap without a confirm step.
 
@@ -341,10 +341,10 @@ Every write query that mutates the server **must** follow these rules:
    - All ViewModel write methods check `isLocked` and return `Locked — unlock to write` error.
    - UI elements are disabled (`enabled = !isLocked`): FABs, Grant/Revoke buttons, checkboxes, save buttons.
    - Dialogs early-return without executing (`if (isLocked) { dialog = false; return@... }`).
-   - The Execute button in QueryEditor is disabled for write queries when locked.
-   - TopBar refresh in QueryEditor skips write queries entirely (re-executes only SELECT/read queries).
+   - The Execute button in SQLEditor is disabled for write queries when locked.
+   - TopBar refresh in SQLEditor skips write queries entirely (re-executes only SELECT/read queries).
 
-4. **TopBar refresh must not execute write queries** — The refresh button re-executes the current page's read queries. In QueryEditor, it skips if `isWriteQuery()` is true. In DataEditor, it calls `refreshData()` (SELECT only).
+4. **TopBar refresh must not execute write queries** — The refresh button re-executes the current page's read queries. In SQLEditor, it skips if `isWriteQuery()` is true. In DataEditor, it calls `refreshData()` (SELECT only).
 
 ### Batch write staging (uniform pattern)
 
@@ -353,7 +353,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 - **Data editor** — `DataEditorViewModel.StagedEdit` + `_pendingEdits: Map<Pair<rowIndex,colIndex>, StagedEdit>` + `_pendingDeletes: Set<rowIndex>`; grouping `by rowIndex → 1 UPDATE per row` + single `DELETE IN`. UI: cell dialog `Cancel/OK` stages locally (red `errorContainer` highlight + staged value), row delete stages; top-bar `Check` (Save) shows `Confirm Write (N)` with the full `;\n`-joined SQL; Execute → `commitPending(...)` (per-statement `currentQuery` append + sequential `executeQuery`, stop on first error), then reload.
 - **Privilege detail** — `UserPermissionViewModel._pendingPrivChanges: Map<"PRIV@onKey", Boolean>` (desired vs `onToPrivs`), `stagePrivToggle` / `buildPendingPrivSqls` / `commitPendingPrivs` (per-`GRANT/REVOKE` + `FLUSH PRIVILEGES` + `loadGrants`). UI: `effectiveChecked()` layer over `hasPrivOnTarget()`, DB/table bold via `effectiveHasAnyPriv()` (any pending `true` makes its `*.*`/`db.*`/`db.table` bold), banner `N pending change(s) | Discard | Save`, `Confirm Write (N)` with `GRANT/REVOKE …` statements.
 
-`IndexManagement` / `QueryEditor` custom SQL follow the same rule via `pendingSql/pendingAction + Confirm Write` where applicable.
+`IndexManagement` / `SQLEditor` custom SQL follow the same rule via `pendingSql/pendingAction + Confirm Write` where applicable.
 
 ### Query execution
 
@@ -369,7 +369,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 | `connection/new` | Create connection | `ui/screens/connection/ConnectionEditorScreen.kt` | Build `ConnectionProfileEntity` + credential snapshot (id `999999` for Test) |
 | `connection/edit/{profileId}` | Edit connection | same | `remember(profile.id)` for `isReadonly` checkbox |
 | `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state |
-| `query/{database}/{table}` | Query editor | `ui/screens/query/QueryEditorScreen.kt` | Editor + history tabs, Execute, timing |
+| `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Editor + history tabs, Execute, timing |
 | `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
@@ -492,7 +492,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 | `exportToSqlInsert(context, table, columns, rows, fileName)` | Generates `INSERT INTO table VALUES (...)` statements |
 | `shareFile(context, file, mimeType)` | Android share intent for the exported file |
 
-**Where to add UI:** Add export buttons to `InlineDataEditorScreen` (top bar or overflow menu) and `QueryEditorScreen` (after results are shown). Pass `columns`/`rows` from the ViewModel's current result set.
+**Where to add UI:** Add export buttons to `InlineDataEditorScreen` (top bar or overflow menu) and `SQLEditorScreen` (after results are shown). Pass `columns`/`rows` from the ViewModel's current result set.
 
 ### 2. Insert Row dialog
 
