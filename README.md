@@ -44,7 +44,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **SQL editor tabs per-database** — `QueryTab` carries `database` + `savedQueryId`; tabs are filtered per `query/{database}/{table}` so `db1` tabs don't mix into `db2`. Re-saving a tab that came from a saved query updates the same row (`UPDATE query_history SET query_text, database, name WHERE id`), deleting a saved query unlinks its tab so next save creates new.
 - **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
-- **Profile backup (encrypted)** — Connection list top bar `Upload` (Export) / `Download` (Import) via SAF, file `.enc` encrypted with master password (`ProfileCrypto` `PBKDF2 120k + AES-256-CBC` `Salted__` header), password not stored in app (SSH-key-like). Decrypt outside app via `openssl` (see [Security & credentials](#security--credentials)).
+- **Profile backup (encrypted)** — Connection list top bar `Upload` (Export) / `Download` (Import) via SAF, file `.enc` encrypted with master password (`ProfileCrypto` `PBKDF2 120k + AES-256-CBC` `Salted__` header), password not stored in app (SSH-key-like). Export includes `id` for per-profile conflict resolution; import shows per-duplicate `Replace / Skip / Insert as New` + `Apply to all remaining duplicates (x left)` (2-line) popup, `tap outside = skip remaining` (abort same result, no rollback), auto `Insert` for file without `id` (backward compat). Decrypt outside app via `openssl` (see [Security & credentials](#security--credentials)).
 
 ---
 
@@ -226,7 +226,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   ├── data/
 │       │   │   ├── PrivilegeResolver.kt        # SHOW GRANTS -> PrivilegeSet (singleton, cached)
 │       │   │   ├── local/
-│       │   │   │   ├── AppDatabase.kt          # Room DB v1 (fallbackToDestructiveMigration)
+│       │   │   │   ├── AppDatabase.kt          # Room DB v3 (fallbackToDestructiveMigration)
 │       │   │   │   ├── dao/ConnectionProfileDao.kt, QueryHistoryDao.kt
 │       │   │   │   └── entity/ConnectionProfileEntity.kt, QueryHistoryEntity.kt
 │       │   │   ├── remote/
@@ -244,7 +244,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   ├── ui/
 │       │   │   ├── components/                 # AppTopBar, AppSidebar/DatabaseTree, DataTable, SqlEditor,
 │       │   │   │                              # SqlEditorWithAutocomplete, SqlSyntaxHighlight,
-│       │   │   │                              # CurrentQueryBar, QueryTabBar, ConnectionCard
+│       │   │   │                              # CurrentQueryBar, QueryTabBar, ConnectionCard, DrawerScaffold
 │       │   │   ├── screens/
 │       │   │   │   ├── browser/DatabaseBrowserScreen.kt
 │       │   │   │   ├── connection/ConnectionListScreen.kt, ConnectionEditorScreen.kt
@@ -370,7 +370,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 
 | Route | Screen | Key file | Notes |
 |-------|--------|----------|-------|
-| `connections` | Connection list | `ui/screens/connection/ConnectionListScreen.kt` | `ConnectionCard` grid, `ThemeManager`-aware |
+| `connections` | Connection list | `ui/screens/connection/ConnectionListScreen.kt` | `ConnectionCard` grid, `ThemeManager`-aware, top bar `Upload`/`Download` for encrypted SAF backup (`ProfileCrypto`), per-duplicate `Replace/Skip/Insert + All` dialog, `tap outside = skip remaining` |
 | `connection/new` | Create connection | `ui/screens/connection/ConnectionEditorScreen.kt` | Build `ConnectionProfileEntity` + credential snapshot (id `999999` for Test) |
 | `connection/edit/{profileId}` | Edit connection | same | `remember(profile.id)` for `isReadonly` checkbox |
 | `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state, **Manage Saved Queries** entry fixed bottom |
@@ -393,7 +393,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 - `testConnection` snapshots credentials under ephemeral id `999999` so the DB tunnel does not pollute the real profile's stored creds; `connect(profile)` reads the persisted creds by `profile.id`.
 - All writes respect the live `sessionLocked` guard; in read-only sessions even staged mutations are blocked server-side (error path, not just UI disable).
 - SSH `StrictHostKeyChecking=no` is intentional for mobile/host-hopping; tighten if your deployment requires known-hosts.
-- **Profile backup encryption** — `util/ProfileCrypto.kt` encrypts the JSON export (`version` + `exported_at` + `profiles[]` with plain passwords) via `PBKDF2WithHmacSHA256` (120k iter) → `AES-256-CBC/PKCS5`, header `Salted__` + 8B salt, **master password not stored** (file is the key, like an SSH key). Any app knowing the password can decrypt. No DB schema change.
+- **Profile backup encryption** — `util/ProfileCrypto.kt` encrypts the JSON export (`version` + `exported_at` + `profiles[]` with `id` + plain passwords) via `PBKDF2WithHmacSHA256` (120k iter) → `AES-256-CBC/PKCS5`, header `Salted__` + 8B salt, **master password not stored** (file is the key, like an SSH key). Any app knowing the password can decrypt. Import: per-duplicate `id` conflict → `Replace` (REPLACE `id`) / `Skip` / `Insert as New` (`id=0` → new autoGenerate) + `Apply to all remaining duplicates (x left)` (2-line, checkbox), `tap outside = skip remaining` (abort same, no rollback), file without `id` (old) auto `Insert`. No DB schema change.
 
   **Decrypt `.enc` outside the app (1-line `openssl`):**
   ```bash
@@ -482,14 +482,12 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 
 **Alpha gaps (shipped as-is, PRs welcome):**
 
-- Room version `1` with destructive migration — upgrade path will drop data until a real migration ships.
+- Room `v3` `fallbackToDestructiveMigration` — no migration planned (bumping version will drop `connection_profiles` / `query_history`; acceptable for internal alpha, reinstall required).
 - SSH `StrictHostKeyChecking=no`; no known-hosts UI.
 - `DatabaseTree` column/index lazy loads are not independently cancellable; rapid expand/collapse can briefly show stale children.
 - No instrumentation / integration tests beyond scaffolding.
 
 **Near-term:**
-
-- Real migrations for `AppDatabase` (starting at v2) and an in-app export for `connection_profiles`.
 - Known-hosts handling for SSH + CA/key-file picker.
 - Pagination polish: stable `LIMIT/OFFSET` footer + total-row-count (`COUNT(*)`) opt-in.
 - `PrivilegeResolver` cache invalidation hook after `GRANT/REVOKE/FLUSH PRIVILEGES` (today `loadGrants` must be called explicitly per destination).
@@ -522,9 +520,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 
 ### 3. History Panel (query history browser)
 
-**Status:** `HistoryPanel` composable is a placeholder (`"Query history will appear here"`) at `DatabaseBrowserScreen.kt:715-719`. The data layer is fully wired: `QueryHistoryDao.getHistoryByConnection()`, `QueryRepository.getHistoryByConnection()`, `QueryHistoryEntity` with `id`, `connectionProfileId`, `query`, `executedAt`, `database` (saved queries scoped per database).
-
-**Where to add UI:** Replace the placeholder `HistoryPanel` with a `LazyColumn` that calls `viewModel.getHistory(profileId)` (needs a new method on `BrowserViewModel` that delegates to `QueryRepository`). Display `QueryHistoryEntity.query` + `executedAt` with tap-to-copy.
+**Status:** ✅ Implemented — `DatabaseBrowserScreen.kt` `HistoryPanel` now shows persistent `query_history` (Room `v3` `isFavorite` included) `LazyColumn` with `search` + `Clear` confirm, per-item `Copy/Delete/Open in editor`, filtered by `connectionId` + `database` tab; `BrowserViewModel` holds `history/search` `Flow` via `QueryRepository`. Former placeholder `"Query history will appear here"` removed.
 
 ### 4. Index Management standalone route
 
@@ -542,7 +538,7 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
 
 ## AI session bootstrap
 
-> **For an AI starting a fresh session on this repo** — use this section so you do not have to crawl the tree blind.
+> **For an AI starting a fresh session on this repo** — use this section so you do not have to crawl the tree blind. `opencode.json` declares `instructions: ["README.md"]` so this file is auto-loaded; do not re-crawl if already provided.
 
 1. **Read this README first**, then only open what you need:
    - Stack/SDK — [Requirements](#requirements) + `app/build.gradle.kts`
@@ -550,14 +546,16 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
    - Privilege rules — [Key concepts — Privilege-filtered browsing](#key-concepts) + `data/PrivilegeResolver.kt` + `data/remote/model/Models.kt:PrivilegeSet`
    - Session semantics — [Key concepts — Session lock vs profile default](#key-concepts) + `data/local/entity/ConnectionProfileEntity.kt` + `ui/viewmodel/ConnectionViewModel.kt`
    - Write flow — [Key concepts — Write query safety rules](#key-concepts) + [Key concepts — Batch write staging](#key-concepts) + `ui/viewmodel/DataEditorViewModel.kt` + `ui/viewmodel/UserPermissionViewModel.kt` + `ui/screens/dataeditor/InlineDataEditorScreen.kt` + `ui/screens/user/UserPrivilegeDetailScreen.kt`
-   - Persistence & creds — `data/local/AppDatabase.kt` + `util/CredentialStore.kt` + `data/repository/ConnectionRepository.kt`
-   - DB connectivity — `data/remote/MariaDbConnectionManager.kt` + `data/remote/SshTunnelManager.kt`
+    - Persistence & creds — `data/local/AppDatabase.kt` + `util/CredentialStore.kt` + `data/repository/ConnectionRepository.kt` + `util/ProfileCrypto.kt` (backup `Salted__` + `id` + per-profile `Replace/Skip/Insert + All`)
+    - DB connectivity — `data/remote/MariaDbConnectionManager.kt` + `data/remote/SshTunnelManager.kt`
 2. **Prefer `Glob`/`Grep`** for discovery over reading every file. The [Project structure](#project-structure) map above is authoritative; treat `ui/screens/export` and `ui/screens/settings` as empty placeholders.
 3. **Batch any writes** you stage through the `Save → Confirm → Execute` preview — that is the expected UX pattern after the current refactor (see `DataEditorViewModel.buildPendingSqls/commitPending`).
 4. **Do not persist `sessionLocked` to Room** — it is `ConnectionViewModel` live state only; `ConnectionProfileEntity.isReadonly` is the persisted default.
 5. **Bottom bars**: `CurrentQueryBar` is the `Scaffold.bottomBar` contract on six browser/query/data/structure/index/user screens — do not duplicate `WindowInsets` handling there; `enableEdgeToEdge()` is in `MainActivity`.
 6. **Query log (`_currentQuery`)**: every ViewModel uses `MutableStateFlow<List<String>>`. Append each SQL (`_currentQuery.value += sql`) before `connectionManager.executeQuery()`. Reset the list on full refresh. This ensures no hidden queries — every query hitting the server must appear in `CurrentQueryBar`.
 7. **Write query safety**: every write query MUST show SQL preview + confirm dialog before execution. Use `isWriteQuery()` to detect write queries (checks for INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/RENAME/GRANT/REVOKE prefix). When `isLocked = true`, ALL write paths must return early with error. TopBar refresh must NEVER execute write queries.
+8. **Profile backup**: `ConnectionRepository` export adds `id` for per-duplicate `Replace/Skip/Insert + Apply to all` (2-line `Apply to all remaining duplicates / (x left)`, `tap outside = skip remaining` == abort, no rollback, file without `id` auto `Insert`). `ProfileCrypto` is `Salted__` `AES-256-CBC` `PBKDF2 120k` decryptable via `openssl enc -d -aes-256-cbc -pbkdf2 -iter 120000`. No DB migration.
+9. **opencode.json**: `instructions: ["README.md"]` auto-loads this file; `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval, no `fallbackToDestructiveMigration` migrations planned (update via `adb install -r`).
 
 ---
 
