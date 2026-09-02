@@ -80,7 +80,7 @@ fun NavGraph(themeManager: ThemeManager) {
         drawerState = drawerState,
         gesturesEnabled = gesturesEnabled,
         drawerContent = {
-            if (isConnected) {
+            if (isConnected && !isOnBrowser) {
                 val profile = (connectionState as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
                 if (profile != null) {
                     ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
@@ -97,20 +97,18 @@ fun NavGraph(themeManager: ThemeManager) {
                                 scope.launch { drawerState.close() }
                                 browserViewModel.selectDatabase(db)
                                 browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.TABLE_INFO)
-                                if (currentRoute != "browser") {
-                                    navController.navigate("browser")
-                                }
+                                navController.navigate("browser")
                             },
                             onUsersClick = {
                                 scope.launch { drawerState.close() }
                                 browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.USERS)
                                 if (!userPermissionViewModelForDrawer.hasLoaded.value) userPermissionViewModelForDrawer.loadUsers()
-                                if (currentRoute != "browser") navController.navigate("browser")
+                                navController.navigate("browser")
                             },
                             onHistoryClick = {
                                 scope.launch { drawerState.close() }
                                 browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.HISTORY)
-                                if (currentRoute != "browser") navController.navigate("browser")
+                                navController.navigate("browser")
                             },
                             onSavedQueriesClick = {
                                 scope.launch { drawerState.close() }
