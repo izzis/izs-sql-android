@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,33 +90,29 @@ fun CurrentQueryBar(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f)
                         )
+                    } else if (isExecuting) {
+                        Text(
+                            text = "Current query  ·  executing ...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
                     } else {
-                        if (isExecuting) {
-                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Executing...",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            Text(
-                                text = "Current query",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .padding(start = 4.dp)
-                            )
-                        }
+                        Text(
+                            text = "Current query",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(start = 4.dp)
+                        )
                     }
                     if (isExecuting && onCancel != null) {
                         TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 24.dp)) {
@@ -139,48 +134,76 @@ fun CurrentQueryBar(
                 }
 
             AnimatedVisibility(
-                visible = expanded,
+                visible = expanded || (isExecuting && lastQuery.isNotEmpty()),
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
-                androidx.compose.foundation.lazy.LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 200.dp)
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    items(queries.size) { idx ->
-                        val originalIdx = queries.lastIndex - idx
-                        val isLast = originalIdx == queries.lastIndex
-                        val sql = queries[originalIdx]
-
-                        if (idx > 0) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant
-                            )
-                        }
-
+                    if (isExecuting && !expanded && lastQuery.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.Top
                         ) {
                             Text(
-                                text = "${originalIdx + 1}",
+                                text = "${queries.size}",
                                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
                                 modifier = Modifier.width(20.dp).padding(top = 2.dp)
                             )
                             SelectionContainer(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = sql,
+                                    text = lastQuery,
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (isLast) FontWeight.Medium else FontWeight.Normal
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
                                 )
+                            }
+                        }
+                    } else if (expanded) {
+                        androidx.compose.foundation.lazy.LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                        ) {
+                            items(queries.size) { idx ->
+                                val originalIdx = queries.lastIndex - idx
+                                val isLast = originalIdx == queries.lastIndex
+                                val sql = queries[originalIdx]
+
+                                if (idx > 0) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = "${originalIdx + 1}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.width(20.dp).padding(top = 2.dp)
+                                    )
+                                    SelectionContainer(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = sql,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                            color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = if (isLast) FontWeight.Medium else FontWeight.Normal
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
