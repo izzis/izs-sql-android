@@ -14,6 +14,12 @@ interface QueryHistoryDao {
     @Query("SELECT * FROM query_history WHERE connection_id = :connectionId ORDER BY executed_at DESC")
     fun getHistoryByConnection(connectionId: Long): Flow<List<QueryHistoryEntity>>
 
+    @Query("SELECT * FROM query_history WHERE connection_id = :connectionId ORDER BY executed_at DESC LIMIT :limit")
+    fun getHistoryByConnectionLimited(connectionId: Long, limit: Int = 200): Flow<List<QueryHistoryEntity>>
+
+    @Query("SELECT * FROM query_history WHERE connection_id = :connectionId AND query_text LIKE '%' || :search || '%' ORDER BY executed_at DESC LIMIT 200")
+    fun searchHistory(connectionId: Long, search: String): Flow<List<QueryHistoryEntity>>
+
     @Query("SELECT * FROM query_history WHERE connection_id = :connectionId AND is_favorite = 1 ORDER BY executed_at DESC")
     fun getFavoritesByConnection(connectionId: Long): Flow<List<QueryHistoryEntity>>
 
@@ -31,6 +37,12 @@ interface QueryHistoryDao {
 
     @Delete
     suspend fun deleteHistory(history: QueryHistoryEntity)
+
+    @Query("DELETE FROM query_history WHERE connection_id = :connectionId AND is_favorite = 0")
+    suspend fun clearHistory(connectionId: Long)
+
+    @Query("DELETE FROM query_history WHERE connection_id = :connectionId AND is_favorite = 0 AND id NOT IN (SELECT id FROM query_history WHERE connection_id = :connectionId AND is_favorite = 0 ORDER BY executed_at DESC LIMIT :keep)")
+    suspend fun pruneHistory(connectionId: Long, keep: Int)
 
     @Query("DELETE FROM query_history WHERE connection_id = :connectionId")
     suspend fun deleteHistoryByConnection(connectionId: Long)

@@ -25,6 +25,14 @@ class QueryRepository @Inject constructor(
         return historyDao.getHistoryByConnection(connectionId)
     }
 
+    fun getHistoryLimited(connectionId: Long, limit: Int = 200): Flow<List<QueryHistoryEntity>> {
+        return historyDao.getHistoryByConnectionLimited(connectionId, limit)
+    }
+
+    fun searchHistory(connectionId: Long, search: String): Flow<List<QueryHistoryEntity>> {
+        return historyDao.searchHistory(connectionId, search)
+    }
+
     fun getFavoritesByConnection(connectionId: Long): Flow<List<QueryHistoryEntity>> {
         return historyDao.getFavoritesByConnection(connectionId)
     }
@@ -34,13 +42,24 @@ class QueryRepository @Inject constructor(
     }
 
     suspend fun saveToHistory(connectionId: Long, query: String, database: String? = null): Long {
-        return historyDao.insertHistory(
+        val id = historyDao.insertHistory(
             QueryHistoryEntity(
                 connectionId = connectionId,
                 queryText = query,
                 database = database
             )
         )
+        // prune to keep last 200 history entries (is_favorite=0 only)
+        try { historyDao.pruneHistory(connectionId, 200) } catch (_: Exception) {}
+        return id
+    }
+
+    suspend fun clearHistory(connectionId: Long) {
+        historyDao.clearHistory(connectionId)
+    }
+
+    suspend fun pruneHistory(connectionId: Long, keep: Int = 200) {
+        historyDao.pruneHistory(connectionId, keep)
     }
 
     suspend fun toggleFavorite(historyId: Long, isFavorite: Boolean) {

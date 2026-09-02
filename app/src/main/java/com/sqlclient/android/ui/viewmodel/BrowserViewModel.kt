@@ -3,13 +3,16 @@ package com.sqlclient.android.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.PrivilegeResolver
+import com.sqlclient.android.data.local.entity.QueryHistoryEntity
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import com.sqlclient.android.data.remote.model.ColumnInfo
 import com.sqlclient.android.data.remote.model.DatabaseInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
 import com.sqlclient.android.data.remote.model.PrivilegeSet
+import com.sqlclient.android.data.repository.QueryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -18,7 +21,8 @@ import javax.inject.Inject
 @HiltViewModel
 class BrowserViewModel @Inject constructor(
     private val connectionManager: MariaDbConnectionManager,
-    private val privilegeResolver: PrivilegeResolver
+    private val privilegeResolver: PrivilegeResolver,
+    private val queryRepository: QueryRepository
 ) : ViewModel() {
 
     private val _databases = MutableStateFlow<List<DatabaseInfo>>(emptyList())
@@ -76,6 +80,49 @@ class BrowserViewModel @Inject constructor(
 
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
     val currentQuery: StateFlow<List<String>> = _currentQuery
+
+    // --- Query history (persistent, is_favorite=0, limit 200) ---
+    private val _history = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())
+    val history: StateFlow<List<QueryHistoryEntity>> = _history
+
+    private val _historySearch = MutableStateFlow("")
+    val historySearch: StateFlow<String> = _historySearch
+
+    private var historyJob: Job? = null
+
+    fun setHistorySearch(q: String) {
+        _historySearch.value = q
+        val cid = _historyConnectionId ?: return
+        loadHistory(cid)
+    }
+
+    private var _historyConnectionId: Long? = null
+
+    fun loadHistory(connectionId: Long) {
+        _historyConnectionId = connectionId
+        historyJob?.cancel()
+        val search = _historySearch.value.trim()
+        historyJob = viewModelScope.launch {
+            val flow = if (search.isBlank()) {
+                queryRepository.getHistoryLimited(connectionId, 200)
+            } else {
+                queryRepository.searchHistory(connectionId, search)
+            }
+            flow.collect { _history.value = it }
+        }
+    }
+
+    fun clearHistory(connectionId: Long) {
+        viewModelScope.launch {
+            queryRepository.clearHistory(connectionId)
+        }
+    }
+
+    fun deleteHistoryItem(entity: QueryHistoryEntity) {
+        viewModelScope.launch {
+            queryRepository.deleteHistory(entity)
+        }
+    }
 
     // Keep active panel in VM so it survives navigation to user_detail and back
     enum class BrowserPanel { TABLE_INFO, USERS, HISTORY }

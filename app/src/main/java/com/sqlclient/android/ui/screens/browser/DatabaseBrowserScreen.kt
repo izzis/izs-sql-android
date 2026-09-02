@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Check
@@ -556,7 +557,13 @@ fun DatabaseBrowserScreen(
                     )
                 }
                 BrowserPanel.HISTORY -> {
-                    HistoryPanel(viewModel = viewModel, modifier = Modifier)
+                    HistoryPanel(
+                        viewModel = viewModel,
+                        queryViewModel = queryViewModel,
+                        profile = profile,
+                        onOpenQuery = onOpenQuery,
+                        modifier = Modifier
+                    )
                 }
                 }
             }
@@ -726,9 +733,139 @@ private fun CreateUserDialog(onDismiss: () -> Unit, onCreate: (String, String, S
 }
 
 @Composable
-private fun HistoryPanel(viewModel: BrowserViewModel, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-        Text(text = "Query history will appear here", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun HistoryPanel(
+    viewModel: BrowserViewModel,
+    queryViewModel: QueryViewModel,
+    profile: ConnectionProfileEntity,
+    onOpenQuery: (String, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val history by viewModel.history.collectAsState()
+    val search by viewModel.historySearch.collectAsState()
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(profile.id) { viewModel.loadHistory(profile.id) }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        // Search + Clear
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { viewModel.setHistorySearch(it) },
+                placeholder = { Text("Search history...", style = MaterialTheme.typography.bodySmall) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = {
+                    if (search.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.setHistorySearch("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(
+                onClick = { showClearConfirm = true },
+                enabled = history.isNotEmpty()
+            ) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+        }
+        HorizontalDivider()
+
+        if (history.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    text = if (search.isNotBlank()) "No results for \"$search\"" else "No queries yet — run a query in SQL Editor",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(history, key = { it.id }) { item ->
+                    val timeStr = try {
+                        val sdf = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault())
+                        sdf.format(java.util.Date(item.executedAt))
+                    } catch (_: Exception) { "" }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (item.isFavorite) {
+                                    Icon(Icons.Default.Bookmark, contentDescription = "Saved", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                }
+                                if (!item.database.isNullOrBlank()) {
+                                    Text(
+                                        text = item.database!!,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.weight(1f))
+                                IconButton(onClick = {
+                                    clipboard.setText(AnnotatedString(item.queryText))
+                                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(14.dp))
+                                }
+                                IconButton(onClick = { viewModel.deleteHistoryItem(item) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SelectionContainer {
+                                Text(
+                                    text = item.queryText,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 3
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = {
+                                    if (item.isFavorite) queryViewModel.openSavedQuery(item) else queryViewModel.openHistoryQuery(item)
+                                    val db = item.database ?: profile.database ?: "_"
+                                    onOpenQuery(db, "_")
+                                }) { Text("Open in editor", style = MaterialTheme.typography.labelSmall) }
+                                TextButton(onClick = {
+                                    clipboard.setText(AnnotatedString(item.queryText))
+                                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                }) { Text("Copy", style = MaterialTheme.typography.labelSmall) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("Clear history") },
+            text = { Text("Delete all query history for this connection? Saved queries will be kept.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearHistory(profile.id)
+                    showClearConfirm = false
+                }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } }
+        )
     }
 }
 

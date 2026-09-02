@@ -160,11 +160,11 @@ class QueryViewModel @Inject constructor(
                             rowCount = result.rowCount,
                             truncated = result.truncated
                         )
-                        saveToHistory(query)
+                        saveToHistory(query, activeTab.database)
                     }
                     is QueryResult.UpdateSuccess -> {
                         _queryResult.value = QueryResultState.UpdateSuccess(result.affectedRows)
-                        saveToHistory(query)
+                        saveToHistory(query, activeTab.database)
                     }
                     is QueryResult.Error -> {
                         _queryResult.value = QueryResultState.Error(result.message)
@@ -191,10 +191,11 @@ class QueryViewModel @Inject constructor(
         }
     }
 
-    private fun saveToHistory(query: String) {
+    private fun saveToHistory(query: String, database: String? = null) {
         val profileId = _currentProfileId.value ?: return
+        val db = database ?: _currentDatabase
         viewModelScope.launch {
-            queryRepository.saveToHistory(profileId, query)
+            queryRepository.saveToHistory(profileId, query, db)
         }
     }
 
@@ -264,6 +265,14 @@ class QueryViewModel @Inject constructor(
         val title = entity.name ?: "Query"
         val db = entity.database ?: _currentDatabase
         val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title, savedQueryId = entity.id, database = db)
+        _queryTabs.value = _queryTabs.value + newTab
+        _activeTabId.value = newTab.id
+    }
+
+    fun openHistoryQuery(entity: QueryHistoryEntity) {
+        val db = entity.database
+        val title = "Query ${nextTabId}"
+        val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title, database = db)
         _queryTabs.value = _queryTabs.value + newTab
         _activeTabId.value = newTab.id
     }
