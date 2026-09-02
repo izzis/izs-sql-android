@@ -1,5 +1,8 @@
 package com.sqlclient.android.ui.screens.connection
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +23,8 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -30,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,9 +51,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
+import com.sqlclient.android.data.repository.ConnectionRepository
 import com.sqlclient.android.ui.components.ConnectionCard
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.util.ThemeManager
@@ -72,9 +80,39 @@ fun ConnectionListScreen(
     val connectingProfileId by viewModel.connectingProfileId.collectAsState()
     val connectionMessage by viewModel.connectionMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val exportImportMessage by viewModel.exportImportMessage.collectAsState()
+    val importConflict by viewModel.importConflict.collectAsState()
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var exportPassword by remember { mutableStateOf("") }
+    var exportConfirm by remember { mutableStateOf("") }
+    var importPassword by remember { mutableStateOf("") }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingExportPassword by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         viewModel.clearConnectingState()
+    }
+
+    LaunchedEffect(exportImportMessage) {
+        exportImportMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearExportImportMessage()
+        }
+    }
+
+    val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
+        if (uri != null && pendingExportPassword.isNotEmpty()) {
+            viewModel.exportEncrypted(uri, pendingExportPassword)
+            pendingExportPassword = ""
+        }
+    }
+    val openDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            pendingImportUri = uri
+            importPassword = ""
+            showImportDialog = true
+        }
     }
 
     LaunchedEffect(connectionState) {
@@ -114,6 +152,24 @@ fun ConnectionListScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
+                    IconButton(onClick = {
+                        exportPassword = ""
+                        exportConfirm = ""
+                        showExportDialog = true
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Upload,
+                            contentDescription = "Export"
+                        )
+                    }
+                    IconButton(onClick = {
+                        openDocLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Import"
+                        )
+                    }
                     IconButton(onClick = { searchQuery = if (searchQuery.isNotEmpty()) "" else " " }) {
                         Icon(
                             imageVector = if (searchQuery.isNotEmpty()) Icons.Default.Close else Icons.Default.Search,
@@ -239,6 +295,127 @@ fun ConnectionListScreen(
             onToggleDarkMode = { themeManager.toggleTheme() },
             onToggleFollowSystem = { themeManager.setFollowSystem(it) },
             onDismiss = { showSettingsDialog = false }
+        )
+    }
+
+    if (showExportDialog) {
+        val exportValid = exportPassword.length >= 8 && exportPassword == exportConfirm
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("Export profiles") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("File akan terenkripsi pakai master password. Password tidak disimpan di app (mirip SSH key).", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = exportPassword,
+                        onValueChange = { exportPassword = it },
+                        label = { Text("Master password (min 8)") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = exportConfirm,
+                        onValueChange = { exportConfirm = it },
+                        label = { Text("Confirm password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (exportPassword.isNotEmpty() && exportPassword.length < 8) Text("Min 8 characters", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    if (exportConfirm.isNotEmpty() && exportPassword != exportConfirm) Text("Passwords do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = exportValid,
+                    onClick = {
+                        pendingExportPassword = exportPassword
+                        showExportDialog = false
+                        val name = "profiles_export_${System.currentTimeMillis()}.enc"
+                        createDocLauncher.launch(name)
+                    }
+                ) { Text("Export") }
+            },
+            dismissButton = { TextButton(onClick = { showExportDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showImportDialog) {
+        val importValid = importPassword.length >= 8
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false; pendingImportUri = null },
+            title = { Text("Import profiles") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Masukkan master password untuk membuka file .enc", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = importPassword,
+                        onValueChange = { importPassword = it },
+                        label = { Text("Master password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (importPassword.isNotEmpty() && importPassword.length < 8) Text("Min 8 characters", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = importValid && pendingImportUri != null,
+                    onClick = {
+                        val uri = pendingImportUri
+                        showImportDialog = false
+                        pendingImportUri = null
+                        val pwd = importPassword
+                        importPassword = ""
+                        if (uri != null) viewModel.startImportPreview(uri, pwd)
+                    }
+                ) { Text("Import") }
+            },
+            dismissButton = { TextButton(onClick = { showImportDialog = false; pendingImportUri = null }) { Text("Cancel") } }
+        )
+    }
+
+    // Per-profile conflict dialog: 3 buttons + checkbox All, tap outside = skip remaining
+    val conflict = importConflict
+    if (conflict is ConnectionViewModel.ImportConflict.Awaiting) {
+        var applyAllChecked by remember(conflict.index) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { viewModel.onImportDismiss() },
+            title = { Text("Profile already exists (${conflict.index + 1}/${conflict.total})") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Incoming: \"${conflict.current.profile.name}\" @ ${conflict.current.profile.host}:${conflict.current.profile.port} (${conflict.current.profile.username})", style = MaterialTheme.typography.bodySmall)
+                    conflict.existing?.let {
+                        Text("Existing id=${it.id}: \"${it.name}\" @ ${it.host}:${it.port} (${it.username})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Text("Choose action for this profile:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = applyAllChecked,
+                            onCheckedChange = { applyAllChecked = it }
+                        )
+                        Column(modifier = Modifier.padding(start = 4.dp)) {
+                            Text("Apply to all remaining duplicates", style = MaterialTheme.typography.bodySmall)
+                            Text("(${conflict.total - conflict.index - 1} left)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { viewModel.onImportDecision(ConnectionRepository.ImportAction.REPLACE, applyAllChecked) }) { Text("Replace") }
+                    TextButton(onClick = { viewModel.onImportDecision(ConnectionRepository.ImportAction.SKIP, applyAllChecked) }) { Text("Skip") }
+                    TextButton(onClick = { viewModel.onImportDecision(ConnectionRepository.ImportAction.INSERT_AS_NEW, applyAllChecked) }) { Text("Insert") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.onImportDismiss() }) { Text("Cancel") }
+            }
         )
     }
 }

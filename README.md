@@ -44,6 +44,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **SQL editor tabs per-database** — `QueryTab` carries `database` + `savedQueryId`; tabs are filtered per `query/{database}/{table}` so `db1` tabs don't mix into `db2`. Re-saving a tab that came from a saved query updates the same row (`UPDATE query_history SET query_text, database, name WHERE id`), deleting a saved query unlinks its tab so next save creates new.
 - **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
+- **Profile backup (encrypted)** — Connection list top bar `Upload` (Export) / `Download` (Import) via SAF, file `.enc` encrypted with master password (`ProfileCrypto` `PBKDF2 120k + AES-256-CBC` `Salted__` header), password not stored in app (SSH-key-like). Decrypt outside app via `openssl` (see [Security & credentials](#security--credentials)).
 
 ---
 
@@ -260,6 +261,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   └── util/
 │       │       ├── CredentialStore.kt          # EncryptedSharedPreferences (sql_client_secure_prefs)
 │       │       ├── ExportUtil.kt
+│       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
 │       │       ├── ThemeManager.kt
 │       │       └── ThreadUtil.kt
 │       └── res/                                # strings, themes, file_provider_paths.xml, mipmap icons
@@ -391,6 +393,20 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 - `testConnection` snapshots credentials under ephemeral id `999999` so the DB tunnel does not pollute the real profile's stored creds; `connect(profile)` reads the persisted creds by `profile.id`.
 - All writes respect the live `sessionLocked` guard; in read-only sessions even staged mutations are blocked server-side (error path, not just UI disable).
 - SSH `StrictHostKeyChecking=no` is intentional for mobile/host-hopping; tighten if your deployment requires known-hosts.
+- **Profile backup encryption** — `util/ProfileCrypto.kt` encrypts the JSON export (`version` + `exported_at` + `profiles[]` with plain passwords) via `PBKDF2WithHmacSHA256` (120k iter) → `AES-256-CBC/PKCS5`, header `Salted__` + 8B salt, **master password not stored** (file is the key, like an SSH key). Any app knowing the password can decrypt. No DB schema change.
+
+  **Decrypt `.enc` outside the app (1-line `openssl`):**
+  ```bash
+  # Export from app: Connection list → Upload → set master password → save .enc
+  # Pull from device (adjust path):
+  adb pull /sdcard/Download/profiles_export_*.enc /tmp/profiles.enc
+  # Decrypt with same master password (requires openssl 1.1.1+):
+  openssl enc -d -aes-256-cbc -pbkdf2 -iter 120000 -in /tmp/profiles.enc -out /tmp/profiles.json -pass pass:111222333
+  cat /tmp/profiles.json | jq .
+  # Re-encrypt for import via app:
+  openssl enc -aes-256-cbc -pbkdf2 -iter 120000 -in /tmp/profiles.json -out /tmp/profiles.enc -pass pass:111222333
+  ```
+  Wrong password → `bad decrypt` / app shows `Wrong master password or corrupt file` (PKCS5/GCM tag failure).
 
 ---
 
