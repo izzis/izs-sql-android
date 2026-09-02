@@ -1,29 +1,19 @@
 package com.sqlclient.android.navigation
 
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
-import com.sqlclient.android.ui.components.AppSidebar
 import com.sqlclient.android.ui.screens.browser.DatabaseBrowserScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionEditorScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionListScreen
@@ -42,7 +32,6 @@ import com.sqlclient.android.ui.viewmodel.QueryViewModel
 import com.sqlclient.android.ui.viewmodel.TableStructureViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 import com.sqlclient.android.util.ThemeManager
-import kotlinx.coroutines.launch
 
 @Composable
 fun NavGraph(themeManager: ThemeManager) {
@@ -50,79 +39,8 @@ fun NavGraph(themeManager: ThemeManager) {
     val connectionViewModel: ConnectionViewModel = hiltViewModel()
     val browserViewModel: BrowserViewModel = hiltViewModel()
     val queryViewModel: QueryViewModel = hiltViewModel()
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-    val connectionState by connectionViewModel.connectionState.collectAsState()
-    val isConnected = connectionState is com.sqlclient.android.ui.viewmodel.ConnectionState.Connected
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
-    val isOnBrowser = currentRoute == "browser"
-    val gesturesEnabled = isConnected && currentRoute != "connections" && currentRoute?.startsWith("connection/") != true && !isOnBrowser
-    // Sidebar data for global drawer (used on non-browser screens via swipe)
-    val databases by browserViewModel.databases.collectAsState()
-    val visibleDatabases by browserViewModel.visibleDatabases.collectAsState()
-    val searchQuery by browserViewModel.searchQuery.collectAsState()
-    val isLoading by browserViewModel.isLoading.collectAsState()
-    val hasLoadedDatabases by browserViewModel.hasLoadedDatabases.collectAsState()
-    val selectedDatabase by browserViewModel.selectedDatabase.collectAsState()
-    val userPermissionViewModelForDrawer: UserPermissionViewModel = hiltViewModel()
-    val users by userPermissionViewModelForDrawer.users.collectAsState()
-    val allFavorites by queryViewModel.allFavorites.collectAsState()
-    val savedQueryCount = allFavorites.size
-    LaunchedEffect(isConnected) {
-        if (isConnected) {
-            val pid = (connectionState as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile?.id
-            if (pid != null) queryViewModel.loadAllFavorites(pid)
-        }
-    }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = gesturesEnabled,
-        drawerContent = {
-            if (isConnected && !isOnBrowser) {
-                val profile = (connectionState as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
-                if (profile != null) {
-                    ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
-                        AppSidebar(
-                            profile = profile,
-                            databases = databases,
-                            visibleDatabases = if (visibleDatabases.isNotEmpty()) visibleDatabases else databases,
-                            searchQuery = searchQuery,
-                            onSearchChange = { browserViewModel.setSearchQuery(it) },
-                            users = users,
-                            isLoading = isLoading && !hasLoadedDatabases,
-                            onRefreshDatabases = { browserViewModel.refreshDatabases() },
-                            onDatabaseClick = { db ->
-                                scope.launch { drawerState.close() }
-                                browserViewModel.selectDatabase(db)
-                                browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.TABLE_INFO)
-                                navController.navigate("browser")
-                            },
-                            onUsersClick = {
-                                scope.launch { drawerState.close() }
-                                browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.USERS)
-                                if (!userPermissionViewModelForDrawer.hasLoaded.value) userPermissionViewModelForDrawer.loadUsers()
-                                navController.navigate("browser")
-                            },
-                            onHistoryClick = {
-                                scope.launch { drawerState.close() }
-                                browserViewModel.setActivePanel(BrowserViewModel.BrowserPanel.HISTORY)
-                                navController.navigate("browser")
-                            },
-                            onSavedQueriesClick = {
-                                scope.launch { drawerState.close() }
-                                navController.navigate("manage_saved_queries")
-                            },
-                            savedQueryCount = savedQueryCount,
-                            selectedDatabase = selectedDatabase
-                        )
-                    }
-                }
-            }
-        }
-    ) {
-        NavHost(
+    NavHost(
         navController = navController,
         startDestination = "connections"
     ) {
@@ -410,7 +328,6 @@ fun NavGraph(themeManager: ThemeManager) {
                 isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
                 topBarColor = indexManagementTopBarColor
             )
-        }
         }
     }
 }

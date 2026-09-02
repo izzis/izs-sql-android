@@ -89,10 +89,17 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.data.remote.ColumnMetadata
+import com.sqlclient.android.ui.components.AppSidebar
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.components.SqlEditor
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
@@ -210,7 +217,39 @@ fun InlineDataEditorScreen(
         MaterialTheme.colorScheme.primary
     }
     val currentQuery by viewModel.currentQuery.collectAsState()
-    Scaffold(
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val visibleDatabases by browserViewModel.visibleDatabases.collectAsState()
+    val searchQuerySidebar by browserViewModel.searchQuery.collectAsState()
+    val isLoadingSidebar by browserViewModel.isLoading.collectAsState()
+    val hasLoadedSidebar by browserViewModel.hasLoadedDatabases.collectAsState()
+    val selectedDatabaseSidebar by browserViewModel.selectedDatabase.collectAsState()
+    val allFav by queryViewModel.allFavorites.collectAsState()
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = true,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
+                AppSidebar(
+                    profile = profile,
+                    databases = databases,
+                    visibleDatabases = if (visibleDatabases.isNotEmpty()) visibleDatabases else databases,
+                    searchQuery = searchQuerySidebar,
+                    onSearchChange = { browserViewModel.setSearchQuery(it) },
+                    users = emptyList(),
+                    isLoading = isLoadingSidebar && !hasLoadedSidebar,
+                    onRefreshDatabases = { browserViewModel.refreshDatabases() },
+                    onDatabaseClick = { scope.launch { drawerState.close() } },
+                    onUsersClick = { scope.launch { drawerState.close() } },
+                    onHistoryClick = { scope.launch { drawerState.close() } },
+                    onSavedQueriesClick = { scope.launch { drawerState.close() } },
+                    savedQueryCount = allFav.size,
+                    selectedDatabase = selectedDatabaseSidebar
+                )
+            }
+        }
+    ) {
+        Scaffold(
         topBar = {
             AppTopBar(
                 title = table,
@@ -409,6 +448,7 @@ fun InlineDataEditorScreen(
                 limit = dataLimit,
                 onLimitChange = { viewModel.changeLimit(it) }
             )
+        }
         }
     }
 
