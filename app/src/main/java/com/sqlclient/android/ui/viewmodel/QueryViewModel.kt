@@ -7,6 +7,7 @@ import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import com.sqlclient.android.data.repository.QueryRepository
+import com.sqlclient.android.util.SqlUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -331,12 +332,10 @@ class QueryViewModel @Inject constructor(
 
     fun isWriteQuery(): Boolean {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return false
-        val query = activeTab.query.trim().uppercase()
-        return query.startsWith("INSERT") || query.startsWith("UPDATE") || query.startsWith("DELETE") ||
-                query.startsWith("ALTER") || query.startsWith("DROP") || query.startsWith("CREATE") ||
-                query.startsWith("TRUNCATE") || query.startsWith("RENAME") || query.startsWith("GRANT") ||
-                query.startsWith("REVOKE")
+        return SqlUtil.isWriteQuery(activeTab.query)
     }
+
+    fun isWriteQuery(sql: String): Boolean = SqlUtil.isWriteQuery(sql)
 
     fun getActiveQueryText(): String {
         val activeTab = _queryTabs.value.find { it.id == _activeTabId.value } ?: return ""

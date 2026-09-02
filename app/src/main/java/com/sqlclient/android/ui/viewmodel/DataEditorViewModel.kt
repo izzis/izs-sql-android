@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
+import com.sqlclient.android.util.SqlUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -480,6 +481,12 @@ class DataEditorViewModel @Inject constructor(
     }
 
 
+    /** Preview SQL that will actually be sent (SELECT gets LIMIT, WRITE does not). */
+    fun getCustomQueryPreview(): String {
+        val sql = _query.value.trim()
+        return SqlUtil.buildLimitedSql(sql, _dataLimit.value)
+    }
+
     fun executeCustomQuery() {
         val sql = _query.value.trim()
         if (sql.isBlank()) return
@@ -487,19 +494,13 @@ class DataEditorViewModel @Inject constructor(
         currentOffset = 0
         _selectedRows.value = emptySet()
         _rows.value = emptyList()
-        _currentQuery.value = listOf(sql)
 
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             val t0 = SystemClock.elapsedRealtime()
             try {
-                val limit = _dataLimit.value
-                val limitedSql = if (!sql.uppercase().contains("LIMIT")) {
-                    "$sql LIMIT $limit"
-                } else {
-                    sql
-                }
+                val limitedSql = SqlUtil.buildLimitedSql(sql, _dataLimit.value)
                 _currentQuery.value = listOf(limitedSql)
                 executeWithLimit(limitedSql)
             } catch (e: Exception) {
@@ -524,7 +525,10 @@ class DataEditorViewModel @Inject constructor(
                     buildBrowseSql(limit = limit, offset = currentOffset)
                 } else {
                     val baseQuery = _query.value.trim()
-                    if (baseQuery.uppercase().contains("LIMIT")) {
+                    // Only paginate SELECT; writes never have hasMoreData but guard anyway
+                    if (!SqlUtil.shouldApplyLimit(baseQuery)) {
+                        baseQuery
+                    } else if (baseQuery.uppercase().contains("LIMIT")) {
                         // Try to append OFFSET if not present
                         if (baseQuery.uppercase().contains("OFFSET")) baseQuery
                         else "$baseQuery OFFSET $currentOffset"
@@ -553,12 +557,9 @@ class DataEditorViewModel @Inject constructor(
     }
 
     private suspend fun executeWithLimit(sql: String) {
+        // sql already limited via buildLimitedSql in executeCustomQuery; don't re-add LIMIT for writes
+        val limitedSql = sql
         val limit = _dataLimit.value
-        val limitedSql = if (!sql.uppercase().contains("LIMIT")) {
-            "$sql LIMIT $limit"
-        } else {
-            sql
-        }
         _query.value = limitedSql
 
         when (val result = connectionManager.executeQuery(limitedSql)) {
@@ -710,12 +711,10 @@ class DataEditorViewModel @Inject constructor(
     }
 
     fun isWriteQuery(): Boolean {
-        val q = _query.value.trim().uppercase()
-        return q.startsWith("INSERT") || q.startsWith("UPDATE") || q.startsWith("DELETE") ||
-                q.startsWith("ALTER") || q.startsWith("DROP") || q.startsWith("CREATE") ||
-                q.startsWith("TRUNCATE") || q.startsWith("RENAME") || q.startsWith("GRANT") ||
-                q.startsWith("REVOKE")
+        return SqlUtil.isWriteQuery(_query.value)
     }
+
+    fun isWriteQuery(sql: String): Boolean = SqlUtil.isWriteQuery(sql)
 
     private fun formatSqlValue(value: Any?): String {
         if (value == null) return "NULL"

@@ -262,6 +262,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │       ├── CredentialStore.kt          # EncryptedSharedPreferences (sql_client_secure_prefs)
 │       │       ├── ExportUtil.kt
 │       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
+│       │       ├── SqlUtil.kt                  # stripLeading/isWriteQuery (multi-statement+comments)/shouldApplyLimit (SELECT only)/buildLimitedSql
 │       │       ├── ThemeManager.kt
 │       │       └── ThreadUtil.kt
 │       └── res/                                # strings, themes, file_provider_paths.xml, mipmap icons
@@ -338,7 +339,7 @@ Every write query that mutates the server **must** follow these rules:
 1. **SQL preview before execution** — The user must see the exact SQL before it is sent. This is done via:
    - `pendingSql` pattern: dialog shows SQL with "Execute" button (used by InsertRow, Grant/Revoke, Create/Drop/Rename User, Change Password, Create/Drop Index, Rename Table, Add/Drop Column).
    - `showSaveConfirm` pattern: batch staging shows all pending SQL in `Confirm Write (N)` dialog (used by DataEditor staged edits/deletes, privilege detail batch changes).
-   - `showWriteConfirm` pattern: SQL editor bars detect write queries via `isWriteQuery()` and show a confirm dialog before executing (used by SQLEditorScreen Execute button and DataEditorScreen SQL editor bar).
+   - `showWriteConfirm` pattern: SQL editor bars detect write queries via `util/SqlUtil.isWriteQuery()` and show a confirm dialog before executing (used by SQLEditorScreen Execute button and DataEditorScreen SQL editor bar). `DataEditor` preview uses `getCustomQueryPreview()` (`SqlUtil.buildLimitedSql`) so dialog equals `general_log`.
 
 2. **Confirm button required** — Every write path must have an explicit user action (tap "Execute" in a dialog) before the query reaches the server. No write query should execute on a simple button tap without a confirm step.
 
@@ -363,6 +364,8 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 ### Query execution
 
 `MariaDbConnectionManager.executeQuery(sql): QueryResult` (`Success(columns, rows)` | `UpdateSuccess` | `Error(message)`) — single JDBC `Connection`, `Properties { connectTimeout 8000, socketTimeout 30000, useSSL/trustServerCertificate, queryTimeout 30s }`, `StrictHostKeyChecking=no` for SSH. `_currentQuery: MutableStateFlow<List<String>>` / `_query` / `_error` / `_lastQueryDurationMs` are the ViewModel contracts driving `CurrentQueryBar` (query log), error Snackbars and the status bar. Every query that hits the server must be appended to `_currentQuery` before execution.
+
+**Read guard `LIMIT`:** `util/SqlUtil.buildLimitedSql(sql, limit)` / `shouldApplyLimit(sql)` auto-appends `LIMIT` **only for `SELECT`** (stripping leading `--/#//* */`). This prevents accidental `SELECT * FROM large_table` without `LIMIT` from loading 100k rows. `WRITE` queries (`INSERT/UPDATE/DELETE/...`) are never limited — `DataEditorViewModel.getCustomQueryPreview()` guarantees the dialog preview equals the SQL sent to `general_log`. `SHOW`/`DESCRIBE` etc. are not limited (`maxRows=1001` in the driver already caps them). `DataEditorViewModel.executeWithLimit` and `loadMore` respect the same guard.
 
 ---
 
@@ -474,6 +477,7 @@ Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), 
 | `Password not found. Save the connection first.` on connect | Credentials not yet saved to `CredentialStore` | Tap **Save** in the editor before **Connect** (or re-save after clearing app data) |
 | Writes still execute while locked | Route not wired to `sessionLocked` | `NavGraph` must pass `isLocked = sessionLocked.collectAsState().value` + `onToggleLock = { setSessionLocked(!value) }` to that screen's `AppTopBar(showLock=true, …)` |
 | Writes not appearing in `CurrentQueryBar` | Write VM missed `_currentQuery.value += sql` | Every write/read path must append to `_currentQuery` before `executeQuery`, including background reads (`SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, `information_schema`, `SHOW GRANTS`, `FLUSH PRIVILEGES`) |
+| `UPDATE` affects only 200 rows | Old `LIMIT` guard injected `LIMIT 200` into all queries without `LIMIT` | Fixed: `SqlUtil.shouldApplyLimit` injects `LIMIT` only for `SELECT` (see `SqlUtil.kt:64`), `WRITE` never limited. `SHOW` relies on driver `maxRows=1001` |
 | `UPDATE ... WHERE pk = ...` affects 0 rows | Wrong `pkColumnIndex` / `autoIncrementColumn` | `loadColumnInfo` parses `SHOW FULL COLUMNS FROM` — ensure the table has a PK / `auto_increment` |
 
 ---
@@ -553,8 +557,9 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
 4. **Do not persist `sessionLocked` to Room** — it is `ConnectionViewModel` live state only; `ConnectionProfileEntity.isReadonly` is the persisted default.
 5. **Bottom bars**: `CurrentQueryBar` is the `Scaffold.bottomBar` contract on six browser/query/data/structure/index/user screens — do not duplicate `WindowInsets` handling there; `enableEdgeToEdge()` is in `MainActivity`.
 6. **Query log (`_currentQuery`)**: every ViewModel uses `MutableStateFlow<List<String>>`. Append each SQL (`_currentQuery.value += sql`) before `connectionManager.executeQuery()`. Reset the list on full refresh. This ensures no hidden queries — every query hitting the server must appear in `CurrentQueryBar`.
-7. **Write query safety**: every write query MUST show SQL preview + confirm dialog before execution. Use `isWriteQuery()` to detect write queries (checks for INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/RENAME/GRANT/REVOKE prefix). When `isLocked = true`, ALL write paths must return early with error. TopBar refresh must NEVER execute write queries.
-8. **Profile backup**: `ConnectionRepository` export adds `id` for per-duplicate `Replace/Skip/Insert + Apply to all` (2-line `Apply to all remaining duplicates / (x left)`, `tap outside = skip remaining` == abort, no rollback, file without `id` auto `Insert`). `ProfileCrypto` is `Salted__` `AES-256-CBC` `PBKDF2 120k` decryptable via `openssl enc -d -aes-256-cbc -pbkdf2 -iter 120000`. No DB migration.
+7. **Write query safety**: every write query MUST show SQL preview + confirm dialog before execution. Use `util/SqlUtil.isWriteQuery(sql)` (robust: strips leading `--/#//* */`, detects multi-statement `;`, word-boundary check for INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/RENAME/GRANT/REVOKE) — single source for `DataEditorViewModel`/`QueryViewModel` and `LIMIT` guard. When `isLocked = true`, ALL write paths must return early with error. TopBar refresh must NEVER execute write queries.
+8. **Read guard `LIMIT` only for `SELECT`**: `SqlUtil.shouldApplyLimit(sql)` / `buildLimitedSql(sql, limit)` — `SELECT` without `LIMIT` gets `LIMIT 200` (preview via `getCustomQueryPreview()` equals `general_log`), `WRITE` never limited (bulk `UPDATE` no longer truncated to 200). `SHOW`/`DESCRIBE` rely on driver `maxRows=1001`.
+9. **Profile backup**: `ConnectionRepository` export adds `id` for per-duplicate `Replace/Skip/Insert + Apply to all` (2-line `Apply to all remaining duplicates / (x left)`, `tap outside = skip remaining` == abort, no rollback, file without `id` auto `Insert`). `ProfileCrypto` is `Salted__` `AES-256-CBC` `PBKDF2 120k` decryptable via `openssl enc -d -aes-256-cbc -pbkdf2 -iter 120000`. No DB migration.
 9. **opencode.json**: `instructions: ["README.md"]` auto-loads this file; `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval, no `fallbackToDestructiveMigration` migrations planned (update via `adb install -r`).
 
 ---

@@ -574,7 +574,7 @@ fun InlineDataEditorScreen(
     }
 
     if (showWriteConfirm) {
-        val sql = viewModel.query.collectAsState().value
+        val sql = viewModel.getCustomQueryPreview()
         val clipboard = LocalClipboardManager.current
         val ctx = LocalContext.current
         AlertDialog(
