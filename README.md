@@ -455,14 +455,19 @@ Tips:
 
 ## Testing
 
-Skeleton only at this point (`src/test`, `src/androidTest` with Compose test rule). Run:
+JVM unit tests run on every push/PR via `.github/workflows/ci.yml` (`JDK 17` + `./gradlew test` + `assembleDebug`).
 
 ```bash
-./gradlew test                # JVM unit tests
-./gradlew connectedAndroidTest  # on-device Compose/Espresso
+./gradlew test                # JVM unit tests (SqlUtil + query logic)
+./gradlew :app:testDebugUnitTest --tests "com.sqlclient.android.util.SqlUtilTest"  # single class
+./gradlew connectedAndroidTest  # on-device Compose/Espresso (scaffold only)
 ```
 
-Planned coverage: `PrivilegeResolver.parseGrants` (glob/`ALL`/`ON` edge cases), `CredentialStore` round-trip, `SshTunnelManager` open/close lifecycle, `DataEditorViewModel` staging `buildPendingSqls` / grouping.
+Current coverage (gate for all query features):
+- `util/SqlUtilTest.kt` — 19 tests: `stripLeading` (plain/line/block/mixed), `isWriteQuery` (singles, reads, wordBoundary `INSERTINTO` false, comments leading, multi `SELECT 1; DROP`, case-insensitive), `shouldApplyLimit` (SELECT true, WRITE/SHOW false, multi-write false), `buildLimitedSql` (SELECT without LIMIT -> +200, WRITE/SHOW never +LIMIT, bulk `UPDATE 10k` stays unlimited, `preview == general_log`). **CI fails if `isWriteQuery`/`shouldApplyLimit` regresses.**
+- CI workflow `ci.yml` is the gate: any new feature that sends SQL to server (new `WRITE` prefix, new `SELECT` guard, new builder) **must** add/update `SqlUtilTest` (or new `*Test.kt`) and keep `gradlew test` green.
+
+Planned: `PrivilegeResolver.parseGrants`, `CredentialStore` round-trip, `SshTunnelManager` lifecycle, `DataEditorViewModel` staging `buildPendingSqls` grouping.
 
 ---
 
@@ -560,7 +565,8 @@ PRs against `main` welcome. For larger changes please open an issue first. Commi
 7. **Write query safety**: every write query MUST show SQL preview + confirm dialog before execution. Use `util/SqlUtil.isWriteQuery(sql)` (robust: strips leading `--/#//* */`, detects multi-statement `;`, word-boundary check for INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/TRUNCATE/RENAME/GRANT/REVOKE) — single source for `DataEditorViewModel`/`QueryViewModel` and `LIMIT` guard. When `isLocked = true`, ALL write paths must return early with error. TopBar refresh must NEVER execute write queries.
 8. **Read guard `LIMIT` only for `SELECT`**: `SqlUtil.shouldApplyLimit(sql)` / `buildLimitedSql(sql, limit)` — `SELECT` without `LIMIT` gets `LIMIT 200` (preview via `getCustomQueryPreview()` equals `general_log`), `WRITE` never limited (bulk `UPDATE` no longer truncated to 200). `SHOW`/`DESCRIBE` rely on driver `maxRows=1001`.
 9. **Profile backup**: `ConnectionRepository` export adds `id` for per-duplicate `Replace/Skip/Insert + Apply to all` (2-line `Apply to all remaining duplicates / (x left)`, `tap outside = skip remaining` == abort, no rollback, file without `id` auto `Insert`). `ProfileCrypto` is `Salted__` `AES-256-CBC` `PBKDF2 120k` decryptable via `openssl enc -d -aes-256-cbc -pbkdf2 -iter 120000`. No DB migration.
-9. **opencode.json**: `instructions: ["README.md"]` auto-loads this file; `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval, no `fallbackToDestructiveMigration` migrations planned (update via `adb install -r`).
+10. **Testing gate**: `util/SqlUtilTest.kt` (19 tests) + `.github/workflows/ci.yml` (`JDK 17`, `gradlew test` + `assembleDebug`) is the gate. Any new query that hits server (new `WRITE` prefix, `SELECT` guard, builder) MUST add/update tests and keep CI green. Run `JAVA_HOME=... ./gradlew test` locally before push; different AI sessions will see failure via CI.
+11. **opencode.json**: `instructions: ["README.md"]` auto-loads this file; `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval, no `fallbackToDestructiveMigration` migrations planned (update via `adb install -r`).
 
 ---
 
