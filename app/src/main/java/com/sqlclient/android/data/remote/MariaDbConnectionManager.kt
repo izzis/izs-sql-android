@@ -22,6 +22,8 @@ class MariaDbConnectionManager @Inject constructor(
 ) {
     private var activeConnection: Connection? = null
     private var activeProfileId: Long? = null
+    /** Profile id of the live session — used to attribute persistent query history. */
+    val currentProfileId: Long? get() = activeProfileId
     /**
      * Last profile with a successful connect — used by silent auto-reconnect after
      * timeout/cancel kills the socket (driver 2.x drops the connection on cancel).

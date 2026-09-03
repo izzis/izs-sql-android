@@ -134,6 +134,7 @@ fun TableStructureScreen(
 
     LaunchedEffect(database, table) {
         viewModel.loadStructure(database, table)
+        indexViewModel.resetQueryLog()
         indexViewModel.loadIndexes(database, table)
         indexViewModel.loadColumns(database, table)
     }
@@ -171,6 +172,7 @@ fun TableStructureScreen(
                 containerColor = topBarColor,
                 onRefresh = {
                     viewModel.loadStructure(database, table)
+                    indexViewModel.resetQueryLog()
                     indexViewModel.loadIndexes(database, table)
                 },
                 isRefreshing = isLoading || idxLoading,

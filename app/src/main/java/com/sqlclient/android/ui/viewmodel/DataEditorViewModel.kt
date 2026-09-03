@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
+import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.util.SqlUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DataEditorViewModel @Inject constructor(
-    private val connectionManager: MariaDbConnectionManager
+    private val connectionManager: MariaDbConnectionManager,
+    private val queryRepository: QueryRepository
 ) : ViewModel() {
 
     private val _columns = MutableStateFlow<List<ColumnMetadata>>(emptyList())
@@ -240,7 +242,7 @@ class DataEditorViewModel @Inject constructor(
                     _currentQuery.value = _currentQuery.value + sql
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
-                        else -> {}
+                        else -> recordWrite(sql, database)
                     }
                 }
                 _operationSuccess.value = "${sqls.size} statement(s) executed"
@@ -568,6 +570,7 @@ class DataEditorViewModel @Inject constructor(
                 _rows.value = result.rows
                 _hasMoreData.value = result.rows.size >= limit
             }
+            is QueryResult.UpdateSuccess -> recordWrite(limitedSql)
             is QueryResult.Error -> _error.value = result.message
             else -> {}
         }
@@ -620,6 +623,7 @@ class DataEditorViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Row inserted"
                         loadData(database, table)
                     }
@@ -667,6 +671,14 @@ class DataEditorViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    /** Persist a user-confirmed write to History panel (success only, like SQL editor). */
+    private fun recordWrite(sql: String, database: String? = null) {
+        val profileId = connectionManager.currentProfileId ?: return
+        viewModelScope.launch {
+            try { queryRepository.saveToHistory(profileId, sql, database) } catch (_: Exception) {}
+        }
     }
 
     fun clearSuccess() {

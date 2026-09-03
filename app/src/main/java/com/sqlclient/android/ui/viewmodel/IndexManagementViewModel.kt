@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
+import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.data.remote.model.IndexInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +15,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class IndexManagementViewModel @Inject constructor(
-    private val connectionManager: MariaDbConnectionManager
+    private val connectionManager: MariaDbConnectionManager,
+    private val queryRepository: QueryRepository
 ) : ViewModel() {
 
     private val _indexes = MutableStateFlow<List<IndexInfo>>(emptyList())
@@ -35,8 +37,13 @@ class IndexManagementViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
     val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
 
+    /** Full page (re)entry — clears the query log. Loaders below only append. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     fun loadIndexes(database: String, table: String) {
-        _currentQuery.value = listOf("SHOW INDEX FROM `$database`.`$table`")
+        _currentQuery.value = _currentQuery.value + "SHOW INDEX FROM `$database`.`$table`"
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -112,6 +119,7 @@ class IndexManagementViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Index '$name' created"
                         loadIndexes(database, table)
                     }
@@ -136,6 +144,7 @@ class IndexManagementViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Index '$name' dropped"
                         loadIndexes(database, table)
                     }
@@ -160,6 +169,7 @@ class IndexManagementViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Column modified"
                         loadColumns(database, table)
                     }
@@ -184,6 +194,7 @@ class IndexManagementViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Column added"
                         loadColumns(database, table)
                     }
@@ -208,6 +219,7 @@ class IndexManagementViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + sql
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
+                        recordWrite(sql, database)
                         _operationSuccess.value = "Column dropped"
                         loadColumns(database, table)
                     }
@@ -231,6 +243,14 @@ class IndexManagementViewModel @Inject constructor(
     fun buildModifyColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` MODIFY COLUMN $columnDef"
     fun buildAddColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
     fun buildDropColumnSql(database: String, table: String, columnName: String): String = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
+
+    /** Persist a user-confirmed write to History panel (success only, like SQL editor). */
+    private fun recordWrite(sql: String, database: String) {
+        val profileId = connectionManager.currentProfileId ?: return
+        viewModelScope.launch {
+            try { queryRepository.saveToHistory(profileId, sql, database) } catch (_: Exception) {}
+        }
+    }
 
     fun clearError() {
         _error.value = null

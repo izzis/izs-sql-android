@@ -429,7 +429,7 @@ fun DbStructureScreen(
                 if (isLocked) { showCreateRoutine = false; return@RoutineDialog }
                 pendingSql = sql
                 pendingAction = {
-                    viewModel.createRoutine(sql, isLocked = isLocked)
+                    viewModel.createRoutine(database, sql, isLocked = isLocked)
                     showCreateRoutine = false
                 }
             }

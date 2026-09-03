@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
+import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.data.remote.model.UserInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,7 +14,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class UserPermissionViewModel @Inject constructor(
-    private val connectionManager: MariaDbConnectionManager
+    private val connectionManager: MariaDbConnectionManager,
+    private val queryRepository: QueryRepository
 ) : ViewModel() {
 
     private val _users = MutableStateFlow<List<UserInfo>>(emptyList())
@@ -101,7 +103,7 @@ class UserPermissionViewModel @Inject constructor(
 
     fun clearPendingPrivs(user: String, host: String) {
         _pendingPrivChanges.value = emptyMap()
-        _currentQuery.value = listOf("SHOW GRANTS FOR `$user`@`$host`")
+        // Discard executes no query — leave the query log untouched.
     }
 
     fun commitPendingPrivs(user: String, host: String, isLocked: Boolean = false) {
@@ -116,7 +118,7 @@ class UserPermissionViewModel @Inject constructor(
                     _currentQuery.value = _currentQuery.value + sql
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
-                        else -> {}
+                        else -> recordWrite(sql)
                     }
                 }
                 flushPrivileges()
@@ -133,14 +135,20 @@ class UserPermissionViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
     val currentQuery: StateFlow<List<String>> = _currentQuery
 
+    /** Full page (re)entry — clears the query log. Loaders below only append. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     /** Manual refresh — cache-first. Call from TopBar Refresh. Back uses cached users. */
     fun refreshUsers() {
         _hasLoaded.value = false
+        resetQueryLog()
         loadUsers(force = true)
     }
 
     fun loadUsers(force: Boolean = false) {
-        _currentQuery.value = listOf("SELECT user, host FROM mysql.user ORDER BY user, host")
+        _currentQuery.value = _currentQuery.value + "SELECT user, host FROM mysql.user ORDER BY user, host"
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -173,7 +181,7 @@ class UserPermissionViewModel @Inject constructor(
     }
 
     fun loadGrants(user: String, host: String) {
-        _currentQuery.value = listOf("SHOW GRANTS FOR `$user`@`$host`")
+        _currentQuery.value = _currentQuery.value + "SHOW GRANTS FOR `$user`@`$host`"
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -204,6 +212,7 @@ class UserPermissionViewModel @Inject constructor(
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
+                        recordWrite(sql)
                         flushPrivileges()
                         loadGrants(user, host)
                         loadUsers()
@@ -228,6 +237,7 @@ class UserPermissionViewModel @Inject constructor(
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
+                        recordWrite(sql)
                         flushPrivileges()
                         loadGrants(user, host)
                         loadUsers()
@@ -264,6 +274,7 @@ class UserPermissionViewModel @Inject constructor(
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
+                        recordWrite(sql)
                         flushPrivileges()
                         loadUsers()
                     }
@@ -287,6 +298,7 @@ class UserPermissionViewModel @Inject constructor(
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
+                        recordWrite(sql)
                         flushPrivileges()
                         loadUsers()
                     }
@@ -306,7 +318,7 @@ class UserPermissionViewModel @Inject constructor(
             try {
                 val sql = "RENAME USER `$oldUser`@`$oldHost` TO `$newUser`@`$newHost`"
                 _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { flushPrivileges(); loadUsers() } }
+                when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { recordWrite(sql); flushPrivileges(); loadUsers() } }
             } catch (e: Exception) { _error.value = "Failed to rename user: ${e.message}" } finally { _isLoading.value = false }
         }
     }
@@ -318,7 +330,7 @@ class UserPermissionViewModel @Inject constructor(
                 val esc = newPassword.replace("'","''")
                 val sql = "ALTER USER `$user`@`$host` IDENTIFIED BY '$esc'"
                 _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { flushPrivileges(); loadUsers() } }
+                when (val result = connectionManager.executeQuery(sql)) { is QueryResult.Error -> _error.value = result.message else -> { recordWrite(sql); flushPrivileges(); loadUsers() } }
             } catch (e: Exception) { _error.value = "Failed to change password: ${e.message}" } finally { _isLoading.value = false }
         }
     }
@@ -329,6 +341,14 @@ class UserPermissionViewModel @Inject constructor(
                 _currentQuery.value = _currentQuery.value + "FLUSH PRIVILEGES"
                 connectionManager.executeQuery("FLUSH PRIVILEGES")
             } catch (_: Exception) {}
+        }
+    }
+
+    /** Persist a user-confirmed write to History panel (success only, like SQL editor). */
+    private fun recordWrite(sql: String) {
+        val profileId = connectionManager.currentProfileId ?: return
+        viewModelScope.launch {
+            try { queryRepository.saveToHistory(profileId, sql, null) } catch (_: Exception) {}
         }
     }
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
+import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.data.remote.model.EventInfo
 import com.sqlclient.android.data.remote.model.RoutineInfo
 import com.sqlclient.android.data.remote.model.TriggerInfo
@@ -24,7 +25,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class DbStructureViewModel @Inject constructor(
-    private val connectionManager: MariaDbConnectionManager
+    private val connectionManager: MariaDbConnectionManager,
+    private val queryRepository: QueryRepository
 ) : ViewModel() {
 
     private val _views = MutableStateFlow<List<String>>(emptyList())
@@ -114,6 +116,7 @@ class DbStructureViewModel @Inject constructor(
     fun createView(database: String, name: String, definition: String, orReplace: Boolean, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildCreateViewSql(database, name, definition, orReplace)),
             successMessage = if (orReplace) "View replaced" else "View created",
             onDone = {
@@ -126,6 +129,7 @@ class DbStructureViewModel @Inject constructor(
     fun dropView(database: String, view: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildDropViewSql(database, view)),
             successMessage = "View dropped",
             onDone = {
@@ -196,6 +200,7 @@ class DbStructureViewModel @Inject constructor(
     fun createTrigger(database: String, name: String, timing: String, event: String, table: String, body: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildCreateTriggerSql(database, name, timing, event, table, body)),
             successMessage = "Trigger created",
             onDone = { loadTriggers(database) }
@@ -206,6 +211,7 @@ class DbStructureViewModel @Inject constructor(
     fun recreateTrigger(database: String, name: String, timing: String, event: String, table: String, body: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(
                 buildDropTriggerSql(database, name),
                 buildCreateTriggerSql(database, name, timing, event, table, body)
@@ -221,6 +227,7 @@ class DbStructureViewModel @Inject constructor(
     fun dropTrigger(database: String, trigger: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildDropTriggerSql(database, trigger)),
             successMessage = "Trigger dropped",
             onDone = {
@@ -312,6 +319,7 @@ class DbStructureViewModel @Inject constructor(
     fun createEvent(database: String, name: String, schedule: String, preserve: Boolean, enabled: Boolean, body: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildCreateEventSql(database, name, schedule, preserve, enabled, body)),
             successMessage = "Event created",
             onDone = { loadEvents(database) }
@@ -321,6 +329,7 @@ class DbStructureViewModel @Inject constructor(
     fun alterEvent(database: String, name: String, schedule: String, preserve: Boolean, enabled: Boolean, body: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildAlterEventSql(database, name, schedule, preserve, enabled, body)),
             successMessage = "Event altered",
             onDone = {
@@ -334,6 +343,7 @@ class DbStructureViewModel @Inject constructor(
     fun toggleEvent(database: String, name: String, enable: Boolean, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildToggleEventSql(database, name, enable)),
             successMessage = if (enable) "Event enabled" else "Event disabled",
             onDone = { loadEvents(database) }
@@ -343,6 +353,7 @@ class DbStructureViewModel @Inject constructor(
     fun dropEvent(database: String, event: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildDropEventSql(database, event)),
             successMessage = "Event dropped",
             onDone = {
@@ -407,10 +418,11 @@ class DbStructureViewModel @Inject constructor(
     }
 
     /** Executes the raw editor content as-is (preview shows the exact same string). */
-    fun createRoutine(rawSql: String, isLocked: Boolean = false) {
+    fun createRoutine(database: String, rawSql: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         // Database is reloaded by the screen via loadRoutines on success.
         runWrites(
+            database = database,
             statements = listOf(rawSql),
             successMessage = "Routine created",
             onDone = {}
@@ -421,6 +433,7 @@ class DbStructureViewModel @Inject constructor(
     fun recreateRoutine(database: String, kind: String, name: String, rawSql: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildDropRoutineSql(database, kind, name), rawSql),
             successMessage = "Routine replaced",
             onDone = {
@@ -433,6 +446,7 @@ class DbStructureViewModel @Inject constructor(
     fun dropRoutine(database: String, kind: String, name: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         runWrites(
+            database = database,
             statements = listOf(buildDropRoutineSql(database, kind, name)),
             successMessage = "Routine dropped",
             onDone = {
@@ -520,7 +534,7 @@ class DbStructureViewModel @Inject constructor(
      * Executes statements sequentially, appending each to the query log.
      * Stops on the first error (no partial-apply hiding).
      */
-    private fun runWrites(statements: List<String>, successMessage: String, onDone: () -> Unit) {
+    private fun runWrites(statements: List<String>, successMessage: String, onDone: () -> Unit, database: String? = null) {
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -528,12 +542,12 @@ class DbStructureViewModel @Inject constructor(
                 for (sql in statements) {
                     _currentQuery.value = _currentQuery.value + sql
                     when (val result = connectionManager.executeQuery(sql)) {
-                        is QueryResult.UpdateSuccess -> {}
+                        is QueryResult.UpdateSuccess -> recordWrite(sql, database)
                         is QueryResult.Error -> {
                             _error.value = result.message
                             return@launch
                         }
-                        else -> {}
+                        else -> recordWrite(sql, database)
                     }
                 }
                 _operationSuccess.value = successMessage
@@ -548,6 +562,14 @@ class DbStructureViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    /** Persist a user-confirmed write to History panel (success only, like SQL editor). */
+    private fun recordWrite(sql: String, database: String? = null) {
+        val profileId = connectionManager.currentProfileId ?: return
+        viewModelScope.launch {
+            try { queryRepository.saveToHistory(profileId, sql, database) } catch (_: Exception) {}
+        }
     }
 
     fun clearSuccess() {

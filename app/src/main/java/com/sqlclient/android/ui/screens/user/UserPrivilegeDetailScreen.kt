@@ -93,6 +93,7 @@ fun UserPrivilegeDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(user, host) {
+        viewModel.resetQueryLog()
         viewModel.loadGrants(user, host)
         if (allDatabases.isEmpty()) viewModel.loadAllDatabases()
     }
