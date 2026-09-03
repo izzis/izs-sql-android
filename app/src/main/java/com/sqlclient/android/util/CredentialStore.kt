@@ -1,4 +1,10 @@
+@file:Suppress("DEPRECATION")
 package com.sqlclient.android.util
+
+// security-crypto 1.1.0 deprecated MasterKey/EncryptedSharedPreferences in favour of
+// raw platform APIs, with no drop-in replacement. They remain fully functional, and
+// migrating away requires a reading-migration for existing stored credentials
+// (otherwise saved passwords become unreadable). Keep using them for now.
 
 import android.content.Context
 import android.content.SharedPreferences

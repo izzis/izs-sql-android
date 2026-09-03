@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -89,8 +88,10 @@ fun SqlClientTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
+            // Edge-to-edge is enabled in MainActivity and enforced on targetSdk 35+,
+            // so the system bars are transparent — only set the icon appearance here.
+            // (Window.statusBarColor is deprecated and must not be set.)
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
         }

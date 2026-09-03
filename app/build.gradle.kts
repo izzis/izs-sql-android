@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.sqlclient.android"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.sqlclient.android"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -56,6 +56,7 @@ android {
             excludes += "/META-INF/NOTICE"
             excludes += "/META-INF/NOTICE.txt"
             excludes += "/META-INF/notice.txt"
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
 }
@@ -92,13 +93,13 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     // Security - Encrypted SharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // MariaDB JDBC Driver - 2.4.4 is the latest version compatible with Android's java.sql and regex engine
     implementation("org.mariadb.jdbc:mariadb-java-client:2.4.4")
 
-    // SSH Tunnel
-    implementation("com.jcraft:jsch:0.1.55")
+    // SSH Tunnel (maintained fork of jcraft/jsch)
+    implementation("com.github.mwiede:jsch:2.28.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

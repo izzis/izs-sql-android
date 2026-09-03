@@ -31,7 +31,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 ## Features
 
 - **Connection management** — create/edit/delete profiles, colored badges, read-only default per connection, `enableEdgeToEdge` UI.
-- **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.jcraft:jsch:0.1.55`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
+- **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.github.mwiede:jsch:2.28.0`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
 - **Database browser** — sidebar (`AppSidebar`/`DatabaseTree`) + main panel; database/table lists are **privilege-filtered** via `PrivilegeResolver` (`PrivilegeSet`), manual refresh, `windowInsets` cache.
 - **Table inspection** — `SHOW TABLES` / `SHOW FULL COLUMNS FROM db.table` lazy-loaded on expand (columns/indexes), `SYSTEM_SCHEMAS` filtered out.
 - **SQL editor with autocomplete** — monospace editor with syntax highlighting (`SqlSyntaxHighlight` tokenizer + `VisualTransformation`), context-aware autocomplete dropdown (`SqlEditorWithAutocomplete`): SQL keywords, dot-prefix `db.table.column` navigation, backtick/quote identifiers, multi-table column merge across FROM/JOIN clauses, JOIN ON autocomplete with columns from all joined tables. Write queries show a confirm dialog before execution. TopBar refresh re-executes only read queries.
@@ -52,18 +52,18 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 | Tooling | Version |
 |---------|---------|
-| Android Studio | Ladybug or newer (AGP 8.5.2, Kotlin 2.0.21) |
-| JDK | 17 ( `compileSdk 34`, `minSdk 26`, `targetSdk 34`, `jvmTarget 17` ) |
-| Android SDK | `compileSdk 34`, NDK not required |
-| Gradle | Wrapper `gradlew` checked in (`gradle-8.7`), no local install needed |
+| Android Studio | Meerkat or newer (AGP 8.9.2, Kotlin 2.0.21) |
+| JDK | 17 ( `compileSdk 36`, `minSdk 26`, `targetSdk 36`, `jvmTarget 17` ) |
+| Android SDK | `compileSdk 36`, NDK not required |
+| Gradle | Wrapper `gradlew` checked in (`gradle-8.12`), no local install needed |
 
 Runtime dependencies (see `app/build.gradle.kts`):
 
 - `androidx.compose:compose-bom:2024.09.03`, `material3`, extended icons, `navigation-compose`, `activity-compose`
 - `hilt-android:2.51.1` + `ksp 2.0.21-1.0.28`, `room:2.6.1` + `ksp`
-- `security-crypto:1.1.0-alpha06` (EncryptedSharedPreferences)
+- `security-crypto:1.1.0` (EncryptedSharedPreferences)
 - `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
-- `jsch:0.1.55`, `kotlinx-coroutines-android:1.7.3`
+- `jsch:2.28.0` (maintained mwiede fork), `kotlinx-coroutines-android:1.7.3`
 - `lifecycle-runtime-compose:2.8.7`, `lifecycle-viewmodel-compose:2.8.7`
 
 ---
@@ -131,16 +131,16 @@ export ANDROID_HOME="$HOME/Android/Sdk"
 export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-# 5. Accept licenses + install required SDK components (Android 34 matches compileSdk 34)
+# 5. Accept licenses + install required SDK components (Android 36 matches compileSdk 36)
 yes | sdkmanager --licenses
-sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
 # 6. Verify
-sdkmanager --list | grep -E "platforms;android-34|build-tools;34"
+sdkmanager --list | grep -E "platforms;android-36|build-tools;36"
 adb --version
 ```
 
-`build-tools` `34.0.0` and `platforms;android-34` are the minimum required by `app/build.gradle.kts` (`compileSdk 34`, `targetSdk 34`). Newer patch versions also work.
+`build-tools` `36.0.0` and `platforms;android-36` are the minimum required by `app/build.gradle.kts` (`compileSdk 36`, `targetSdk 36`). Newer patch versions also work.
 
 ### 3. Point Gradle at the SDK
 
