@@ -8,6 +8,7 @@ import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.util.SqlUtil
+import com.sqlclient.android.util.CellDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -355,11 +356,11 @@ class QueryViewModel @Inject constructor(
         if (database.isBlank()) return
         val effectiveTable = if (table.isBlank() || table == "_") "TABLE_NAME" else table
         val idx = columns.indexOfFirst { it.name == targetColumn }
-        val oldRaw = row.getOrNull(idx)?.toString() ?: ""
+        val oldRaw = row.getOrNull(idx)?.let { CellDisplay.trim(it.toString()) } ?: ""
         val escapedOld = oldRaw.replace("'", "''")
         val where = columns.mapIndexedNotNull { cIdx, col ->
             val v = row.getOrNull(cIdx)
-            if (v == null) "`${col.name}` IS NULL" else "`${col.name}` = '${v.toString().replace("'", "''")}'"
+            if (v == null) "`${col.name}` IS NULL" else "`${col.name}` = '${CellDisplay.trim(v.toString()).replace("'", "''")}'"
         }.joinToString(" AND ")
         val sql = if (where.isBlank()) {
             "UPDATE `$database`.`$effectiveTable` SET `$targetColumn` = '$escapedOld'"

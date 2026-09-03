@@ -106,6 +106,7 @@ import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
+import com.sqlclient.android.util.CellDisplay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -426,7 +427,7 @@ fun InlineDataEditorScreen(
                         val filterParts = mutableListOf<String>()
                         row.forEachIndexed { idx, value ->
                             val colName = columns.getOrNull(idx)?.name ?: return@forEachIndexed
-                            val filterVal = if (value == null) "IS NULL" else "= '${value.toString().replace("'", "''")}'"
+                            val filterVal = if (value == null) "IS NULL" else "= '${CellDisplay.trim(value.toString()).replace("'", "''")}'"
                             filterParts.add("`$colName` $filterVal")
                         }
                         viewModel.setWhereInput(filterParts.joinToString(" AND "))
@@ -437,7 +438,7 @@ fun InlineDataEditorScreen(
                         val colName = columns.getOrNull(colIdx)?.name ?: return@DataGrid
                         val cellValue = row.getOrNull(colIdx)
                         if (cellValue != null) {
-                            val filterVal = "'${cellValue.toString().replace("'", "''")}'"
+                            val filterVal = "'${CellDisplay.trim(cellValue.toString()).replace("'", "''")}'"
                             viewModel.setWhereInput("`$colName` = $filterVal")
                             viewModel.applyWhereFilter()
                         }
@@ -468,7 +469,7 @@ fun InlineDataEditorScreen(
         val columnName = columns.getOrNull(colIndex)?.name ?: ""
         CellEditDialog(
             columnName = columnName,
-            initialValue = value?.toString() ?: "",
+            initialValue = if (value == null) "" else CellDisplay.trim(value.toString()),
             onConfirm = { newValue ->
                 viewModel.stageEdit(rowIndex, colIndex, columnName, newValue)
                 editingCell = null
@@ -481,7 +482,7 @@ fun InlineDataEditorScreen(
         val columnName = columns.getOrNull(colIndex)?.name ?: ""
         CellViewDialog(
             columnName = columnName,
-            value = value?.toString() ?: "NULL",
+            value = CellDisplay.format(value),
             onCopy = { viewingCell = null },
             onDismiss = { viewingCell = null }
         )
@@ -490,7 +491,7 @@ fun InlineDataEditorScreen(
     // Multi-select batch edit confirmation
     multiEditTarget?.let { (_, colIndex, _) ->
         val columnName = columns.getOrNull(colIndex)?.name ?: ""
-        val currentValue = multiEditTarget?.third?.toString() ?: ""
+        val currentValue = multiEditTarget?.third?.let { CellDisplay.trim(it.toString()) } ?: ""
         var multiEditValue by remember { mutableStateOf(currentValue) }
         AlertDialog(
             onDismissRequest = { multiEditTarget = null },
@@ -1055,7 +1056,7 @@ private fun DataGrid(
     val checkboxWidth = 48.dp
     val rowHeight = 40.dp
     val displayRows = androidx.compose.runtime.remember(rows) {
-        rows.map { r -> r.map { v -> if (v == null) "NULL" else { val s = v.toString(); if (s.length > 200) s.take(200) + "…" else s } } }
+        rows.map { r -> r.map { v -> val s = CellDisplay.format(v); if (s.length > 200) s.take(200) + "…" else s } }
     }
     val columnWidths: List<androidx.compose.ui.unit.Dp> = remember(columns, displayRows) {
         if (columns.isEmpty()) emptyList() else {
@@ -1261,7 +1262,7 @@ private fun DataGrid(
                                         DropdownMenuItem(
                                             text = { Text("Copy row") },
                                             onClick = {
-                                                val rowText = row.joinToString(" | ") { it?.toString() ?: "NULL" }
+                                                val rowText = row.joinToString(" | ") { CellDisplay.format(it) }
                                                 clipboard.setText(AnnotatedString(rowText))
                                                 Toast.makeText(ctx, "Row copied", Toast.LENGTH_SHORT).show()
                                                 contextMenuRow = null; contextMenuColIndex = null
@@ -1301,7 +1302,7 @@ private fun DataGrid(
                                         DropdownMenuItem(
                                             text = { Text("Copy value") },
                                             onClick = {
-                                                val text = cellValue?.toString() ?: "NULL"
+                                                val text = CellDisplay.format(cellValue)
                                                 clipboard.setText(AnnotatedString(text))
                                                 Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
                                                 contextMenuRow = null; contextMenuColIndex = null
@@ -1310,7 +1311,7 @@ private fun DataGrid(
                                         )
                                         if (cellValue != null && colName.isNotEmpty()) {
                                             DropdownMenuItem(
-                                                text = { Text("Filter: $colName = ${cellValue.toString().take(20)}") },
+                                                text = { Text("Filter: $colName = ${CellDisplay.format(cellValue).take(20)}") },
                                                 onClick = {
                                                     onFilterByCell(rowIndex, colIdx)
                                                     contextMenuRow = null; contextMenuColIndex = null

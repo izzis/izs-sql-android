@@ -8,6 +8,7 @@ import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.QueryResult
 import com.sqlclient.android.data.repository.QueryRepository
 import com.sqlclient.android.util.SqlUtil
+import com.sqlclient.android.util.CellDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -736,7 +737,7 @@ class DataEditorViewModel @Inject constructor(
         return when (value) {
             is Number -> value.toString()
             is Boolean -> if (value) "1" else "0"
-            else -> "'${value.toString().replace("'", "''")}'"
+            else -> "'${CellDisplay.trim(value.toString()).replace("'", "''")}'"
         }
     }
 }

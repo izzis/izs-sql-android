@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sqlclient.android.data.remote.ColumnMetadata
+import com.sqlclient.android.util.CellDisplay
 
 private const val MIN_COL_DP = 90
 private const val MAX_COL_DP = 360
@@ -65,7 +66,7 @@ fun DataTable(
 ) {
     val horizontalScrollState = rememberScrollState()
     val displayRows = remember(rows) {
-        rows.map { r -> r.map { v -> if (v == null) "NULL" else { val s = v.toString(); if (s.length > 200) s.take(200) + "…" else s } } }
+        rows.map { r -> r.map { v -> val s = CellDisplay.format(v); if (s.length > 200) s.take(200) + "…" else s } }
     }
     val columnWidths: List<Dp> = remember(columns, displayRows) {
         if (columns.isEmpty()) emptyList() else {
@@ -179,7 +180,7 @@ fun DataTable(
 
     viewingCell?.let { (_, colIdx, row) ->
         val colName = columns.getOrNull(colIdx)?.name ?: "Value"
-        val raw = row.getOrNull(colIdx)?.toString() ?: "NULL"
+        val raw = CellDisplay.format(row.getOrNull(colIdx))
         val canQuickUpdate = onQuickUpdate != null
         AlertDialog(
             onDismissRequest = { viewingCell = null },
