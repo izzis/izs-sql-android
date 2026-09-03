@@ -106,6 +106,11 @@ class SshTunnelManager @Inject constructor() {
             put("StrictHostKeyChecking", "no")
             put("PreferredAuthentications", "publickey,password")
             put("ForwardX11", "no")
+            // Keepalive tiap 15 dtk: cegah sshd / NAT / firewall memutus tunnel yang idle.
+            // Tanpa ini tunnel diam -> diputus (~30 dtk di banyak server) dan JDBC ikut mati.
+            // JSch baca nilai config sebagai String, jadi pakai "15000" bukan angka.
+            put("ServerAliveInterval", "15000")
+            put("ServerAliveCountMax", "3")
         }
         sess.setConfig(config)
         sess.connect(10000)
