@@ -568,9 +568,7 @@ fun DatabaseBrowserScreen(
                 BrowserPanel.HISTORY -> {
                     HistoryPanel(
                         viewModel = viewModel,
-                        queryViewModel = queryViewModel,
                         profile = profile,
-                        onOpenQuery = onOpenQuery,
                         modifier = Modifier
                     )
                 }
@@ -744,9 +742,7 @@ private fun CreateUserDialog(onDismiss: () -> Unit, onCreate: (String, String, S
 @Composable
 private fun HistoryPanel(
     viewModel: BrowserViewModel,
-    queryViewModel: QueryViewModel,
     profile: ConnectionProfileEntity,
-    onOpenQuery: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val history by viewModel.history.collectAsState()
@@ -841,16 +837,12 @@ private fun HistoryPanel(
                                     text = item.queryText,
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 3
+                                    maxLines = 3,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = {
-                                    if (item.isFavorite) queryViewModel.openSavedQuery(item) else queryViewModel.openHistoryQuery(item)
-                                    val db = item.database ?: profile.database ?: "_"
-                                    onOpenQuery(db, "_")
-                                }) { Text("Open in editor", style = MaterialTheme.typography.labelSmall) }
                                 TextButton(onClick = {
                                     clipboard.setText(AnnotatedString(item.queryText))
                                     Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()

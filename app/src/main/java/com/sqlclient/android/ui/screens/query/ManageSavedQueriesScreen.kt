@@ -304,7 +304,7 @@ fun ManageSavedQueriesScreen(
                                     onDeleteClick = { deleteTarget = item.entity },
                                     onOpen = {
                                         queryViewModel.openSavedQuery(item.entity)
-                                        onOpenQuery(item.dbName, "_")
+                                        onOpenQuery(item.entity.database ?: profile.database ?: "_", "_")
                                     }
                                 )
                             }

@@ -238,13 +238,16 @@ class DataEditorViewModel @Inject constructor(
             _error.value = null
             _isLoading.value = true
             try {
+                val executed = mutableListOf<String>()
                 for (sql in sqls) {
                     _currentQuery.value = _currentQuery.value + sql
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
-                        else -> recordWrite(sql, database)
+                        else -> executed.add(sql)
                     }
                 }
+                // Archive: one combined history entry per Save (matches Confirm preview).
+                if (executed.isNotEmpty()) recordWrite(executed.joinToString(";\n"), database)
                 _operationSuccess.value = "${sqls.size} statement(s) executed"
                 clearStaged()
                 loadData(database, table, force = true)
@@ -570,7 +573,7 @@ class DataEditorViewModel @Inject constructor(
                 _rows.value = result.rows
                 _hasMoreData.value = result.rows.size >= limit
             }
-            is QueryResult.UpdateSuccess -> recordWrite(limitedSql)
+            is QueryResult.UpdateSuccess -> recordWrite(limitedSql, currentDatabase.ifBlank { null })
             is QueryResult.Error -> _error.value = result.message
             else -> {}
         }

@@ -270,14 +270,6 @@ class QueryViewModel @Inject constructor(
         _activeTabId.value = newTab.id
     }
 
-    fun openHistoryQuery(entity: QueryHistoryEntity) {
-        val db = entity.database
-        val title = "Query ${nextTabId}"
-        val newTab = QueryTab(id = nextTabId++, query = entity.queryText, title = title, database = db)
-        _queryTabs.value = _queryTabs.value + newTab
-        _activeTabId.value = newTab.id
-    }
-
     fun updateSavedQuery(savedQueryId: Long, query: String, name: String?, database: String? = null) {
         viewModelScope.launch {
             val finalName = name?.takeIf { it.isNotBlank() }

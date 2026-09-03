@@ -539,17 +539,19 @@ class DbStructureViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
+                val executed = mutableListOf<String>()
                 for (sql in statements) {
                     _currentQuery.value = _currentQuery.value + sql
                     when (val result = connectionManager.executeQuery(sql)) {
-                        is QueryResult.UpdateSuccess -> recordWrite(sql, database)
                         is QueryResult.Error -> {
                             _error.value = result.message
                             return@launch
                         }
-                        else -> recordWrite(sql, database)
+                        else -> executed.add(sql)
                     }
                 }
+                // Archive: one combined history entry per action (matches Confirm preview).
+                if (executed.isNotEmpty()) recordWrite(executed.joinToString(";\n"), database)
                 _operationSuccess.value = successMessage
                 onDone()
             } catch (e: Exception) {
