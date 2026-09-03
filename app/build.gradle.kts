@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -23,13 +25,41 @@ android {
         }
     }
 
+    // Release signing: keystore lives OUTSIDE the repo (~/.keystore/),
+    // passwords in gitignored local.properties (release.storePassword /
+    // release.keyPassword) or env SQL_RELEASE_STORE_PASSWORD /
+    // SQL_RELEASE_KEY_PASSWORD. Without them the APK stays unsigned.
+    val localProps = Properties()
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { localProps.load(it) }
+    }
+    val releaseStorePassword =
+        localProps.getProperty("release.storePassword") ?: System.getenv("SQL_RELEASE_STORE_PASSWORD")
+    val releaseKeyPassword =
+        localProps.getProperty("release.keyPassword") ?: System.getenv("SQL_RELEASE_KEY_PASSWORD")
+        ?: releaseStorePassword
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getProperty("user.home") + "/.keystore/sql-client-release.jks")
+            storePassword = releaseStorePassword
+            keyAlias = "sqlclient"
+            keyPassword = releaseKeyPassword
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (!releaseStorePassword.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
