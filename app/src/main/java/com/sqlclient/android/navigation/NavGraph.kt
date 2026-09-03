@@ -20,7 +20,6 @@ import com.sqlclient.android.ui.screens.connection.ConnectionListScreen
 import com.sqlclient.android.ui.screens.dataeditor.InlineDataEditorScreen
 import com.sqlclient.android.ui.screens.query.ManageSavedQueriesScreen
 import com.sqlclient.android.ui.screens.query.SQLEditorScreen
-import com.sqlclient.android.ui.screens.table.IndexManagementScreen
 import com.sqlclient.android.ui.screens.table.TableStructureScreen
 import com.sqlclient.android.ui.screens.user.UserManagementScreen
 import com.sqlclient.android.ui.screens.user.UserPrivilegeDetailScreen
@@ -298,36 +297,6 @@ fun NavGraph(themeManager: ThemeManager) {
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
             }
-        }
-
-        composable(
-            "index_management/{database}/{table}",
-            arguments = listOf(
-                navArgument("database") { type = NavType.StringType },
-                navArgument("table") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val database = backStackEntry.arguments?.getString("database") ?: return@composable
-            val table = backStackEntry.arguments?.getString("table") ?: return@composable
-            val indexManagementViewModel: IndexManagementViewModel = hiltViewModel()
-            val indexManagementProfile = (connectionViewModel.connectionState.value as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
-            val indexManagementTopBarColor = try {
-                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(indexManagementProfile?.color ?: "#6200EE"))
-            } catch (_: Exception) {
-                androidx.compose.ui.graphics.Color(0xFF6200EE)
-            }
-            IndexManagementScreen(
-                viewModel = indexManagementViewModel,
-                connectionViewModel = connectionViewModel,
-                database = database,
-                table = table,
-                isLocked = connectionViewModel.sessionLocked.collectAsState().value,
-                onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
-                onBack = { navController.popBackStack() },
-                onReconnect = { connectionViewModel.reconnect() },
-                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
-                topBarColor = indexManagementTopBarColor
-            )
         }
     }
 }

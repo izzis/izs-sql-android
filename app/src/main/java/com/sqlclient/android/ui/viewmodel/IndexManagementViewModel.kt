@@ -45,15 +45,18 @@ class IndexManagementViewModel @Inject constructor(
                     is QueryResult.Success -> {
                         val indexMap = mutableMapOf<String, MutableList<Pair<String, Int>>>()
                         val indexTypes = mutableMapOf<String, String>()
+                        val indexCardinality = mutableMapOf<String, Long>()
 
                         result.rows.forEach { row ->
                             val keyName = row[2].toString()
                             val columnName = row[4].toString()
                             val nonUnique = (row[1] as? Number)?.toInt() ?: 0
                             val indexType = row.getOrNull(10)?.toString() ?: "BTREE"
+                            val cardinality = (row.getOrNull(6) as? Number)?.toLong()
 
                             indexMap.getOrPut(keyName) { mutableListOf() }.add(columnName to nonUnique)
                             indexTypes[keyName] = indexType
+                            if (cardinality != null) indexCardinality[keyName] = cardinality
                         }
 
                         _indexes.value = indexMap.map { (name, columns) ->
@@ -61,7 +64,8 @@ class IndexManagementViewModel @Inject constructor(
                                 name = name,
                                 columns = columns.map { it.first },
                                 isUnique = columns.first().second == 0,
-                                type = indexTypes[name] ?: "BTREE"
+                                type = indexTypes[name] ?: "BTREE",
+                                cardinality = indexCardinality[name]
                             )
                         }
                     }
@@ -146,77 +150,6 @@ class IndexManagementViewModel @Inject constructor(
         }
     }
 
-    fun renameTable(database: String, oldName: String, newName: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val sql = "RENAME TABLE `$database`.`$oldName` TO `$database`.`$newName`"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "Table renamed to '$newName'"
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to rename table: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun addColumn(database: String, table: String, columnDef: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val sql = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "Column added"
-                        loadColumns(database, table)
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to add column: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun dropColumn(database: String, table: String, columnName: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val sql = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
-                _currentQuery.value = _currentQuery.value + sql
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.UpdateSuccess -> {
-                        _operationSuccess.value = "Column '$columnName' dropped"
-                        loadColumns(database, table)
-                    }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to drop column: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
     fun modifyColumn(database: String, table: String, columnDef: String, isLocked: Boolean = false) {
         if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
         viewModelScope.launch {
@@ -247,9 +180,6 @@ class IndexManagementViewModel @Inject constructor(
         return "CREATE ${uniqueStr}INDEX `$name` ON `$database`.`$table` ($colList)"
     }
     fun buildDropIndexSql(name: String, database: String, table: String): String = "DROP INDEX `$name` ON `$database`.`$table`"
-    fun buildRenameTableSql(database: String, oldName: String, newName: String): String = "RENAME TABLE `$database`.`$oldName` TO `$database`.`$newName`"
-    fun buildAddColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
-    fun buildDropColumnSql(database: String, table: String, columnName: String): String = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
     fun buildModifyColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` MODIFY COLUMN $columnDef"
 
     fun clearError() {

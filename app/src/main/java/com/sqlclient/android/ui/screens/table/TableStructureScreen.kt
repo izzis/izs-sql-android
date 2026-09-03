@@ -20,10 +20,14 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -63,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.sqlclient.android.data.remote.model.ColumnInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
+import com.sqlclient.android.util.IndexAnalyzer
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
@@ -98,6 +103,10 @@ fun TableStructureScreen(
     val idxError by indexViewModel.error.collectAsState()
     val idxSuccess by indexViewModel.operationSuccess.collectAsState()
     val idxQuery by indexViewModel.currentQuery.collectAsState()
+
+    // Analysis is pure in-memory over the already-loaded list: no extra query, always shown.
+    val effectiveIndexes = if (idxIndexes.isNotEmpty()) idxIndexes else indexes
+    val indexIssues = remember(effectiveIndexes) { IndexAnalyzer.analyze(database, table, effectiveIndexes) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -185,9 +194,13 @@ fun TableStructureScreen(
                     0 -> ColumnsTab(columns, isLocked) { editingColumn = it }
                     1 -> DdlTab(createTable)
                     2 -> IndexesTabEditable(
-                        indexes = if (idxIndexes.isNotEmpty()) idxIndexes else indexes,
+                        indexes = effectiveIndexes,
                         isLocked = isLocked,
-                        onDeleteIndex = { indexToDelete = it }
+                        onDeleteIndex = { indexToDelete = it },
+                        issues = indexIssues,
+                        onDropIssue = { issue ->
+                            effectiveIndexes.firstOrNull { it.name == issue.indexName }?.let { indexToDelete = it }
+                        }
                     )
                 }
             }
@@ -349,20 +362,105 @@ private fun DdlTab(createTable: String?) {
 }
 
 @Composable
-private fun IndexesTabEditable(indexes: List<IndexInfo>, isLocked: Boolean, onDeleteIndex: (IndexInfo) -> Unit) {
-    if (indexes.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
-                Text(text = "No indexes found", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = "Tap Create Index to add one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun IndexesTabEditable(
+    indexes: List<IndexInfo>,
+    isLocked: Boolean,
+    onDeleteIndex: (IndexInfo) -> Unit,
+    issues: List<IndexAnalyzer.IndexIssue> = emptyList(),
+    onDropIssue: (IndexAnalyzer.IndexIssue) -> Unit = {}
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Auto health box: pure in-memory analysis over the loaded list, no tap needed.
+        if (indexes.isNotEmpty()) {
+            if (issues.isEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Indexes healthy",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    issues.forEach { issue ->
+                        IndexIssueBox(issue = issue, isLocked = isLocked, onDrop = { onDropIssue(issue) })
+                    }
+                }
             }
         }
-        return
+        if (indexes.isEmpty()) {
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = "No indexes found", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "Tap Create Index to add one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else {
+            LazyColumn(modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                items(indexes) { index -> IndexCardEditable(index, isLocked, onDeleteIndex) }
+            }
+        }
     }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-        items(indexes) { index -> IndexCardEditable(index, isLocked, onDeleteIndex) }
+}
+
+@Composable
+private fun IndexIssueBox(
+    issue: IndexAnalyzer.IndexIssue,
+    isLocked: Boolean,
+    onDrop: () -> Unit
+) {
+    val (icon, tint) = when (issue.severity) {
+        IndexAnalyzer.Severity.ERROR -> Icons.Default.Error to MaterialTheme.colorScheme.error
+        IndexAnalyzer.Severity.WARNING -> Icons.Default.Warning to MaterialTheme.colorScheme.tertiary
+        IndexAnalyzer.Severity.INFO -> Icons.Default.Info to MaterialTheme.colorScheme.primary
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = issue.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = issue.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            TextButton(onClick = onDrop, enabled = !isLocked) {
+                Text("Drop", color = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
+            }
+        }
     }
 }
 
@@ -373,7 +471,12 @@ private fun IndexCardEditable(index: IndexInfo, isLocked: Boolean, onDeleteIndex
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = index.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(text = index.columns.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = "${index.type} • ${if (index.isUnique) "Unique" else "Non-unique"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = "${index.type} • ${if (index.isUnique) "Unique" else "Non-unique"}" +
+                        (index.cardinality?.let { " • ~${IndexAnalyzer.formatCardinality(it)}" } ?: ""),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             IconButton(onClick = { onDeleteIndex(index) }, enabled = !isLocked) {
                 Icon(Icons.Default.Delete, contentDescription = "Drop index", tint = if (isLocked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)

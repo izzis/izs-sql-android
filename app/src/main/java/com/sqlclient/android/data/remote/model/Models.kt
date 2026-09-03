@@ -24,7 +24,9 @@ data class IndexInfo(
     val name: String,
     val columns: List<String>,
     val isUnique: Boolean,
-    val type: String
+    val type: String,
+    /** Estimated distinct values from SHOW INDEX (null when unknown / not parsed). */
+    val cardinality: Long? = null
 )
 
 data class ForeignKeyInfo(

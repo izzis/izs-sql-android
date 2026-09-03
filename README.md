@@ -38,7 +38,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Inline data editor** — paginated `LIMIT/OFFSET` grid (limit presets 100/200/500/1000) with infinite scroll (`snapshotFlow` + `loadMore`), **quick WHERE filter** (`WHERE <raw>`) with lite autocomplete chips, per-cell edit (dialog), batch staging (see below), row select/delete, query-timing in the status bar. Built-in SQL editor bar for custom queries — write queries show confirm dialog before execution.
 - **Batch write flow** — every write goes through **Save → Confirm → Execute**: edits/deletes are staged locally (red `errorContainer` highlight in the grid / bold for privileges) until the top-bar **Save** (Check icon) opens a multi-statement SQL preview; Execute commits sequentially with per-statement `currentQuery` updates.
 - **User & privilege management** — list `mysql.user`, full-page privilege detail per `user@host` (`SHOW GRANTS` parsing, bold for any grant on `*.*`/`db.*`/`db.table`, 8-privilege checkbox matrix per `ON` target).
-- **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`/`IndexManagementScreen`).
+- **Indexes / table structure** — view/alter structure and indexes (read-gated in `TableStructureScreen`): index list with cardinality (`~1500`), auto health box (duplicate/redundant/low-selectivity via `IndexAnalyzer`, Drop with confirm), create/drop with preview.
 - **Session lock vs profile default** — `ConnectionProfileEntity.isReadonly` is the **default on connect**; `ConnectionViewModel.sessionLocked` is the **live session lock** toggled from the top bar (does not persist to Room) and wired to every route via `NavGraph`.
 - **Saved queries (Manage)** — `QueryHistoryEntity.isFavorite` grouped by database, **Manage Saved Queries** screen from sidebar (fixed bottom + badge): expand/collapse per-database folders, copy/rename/delete/open to SQL Editor, **backup/restore JSON** (`version` + `exported_at` + `queries[{name, database, query_text}]`). Top bar uses per-profile color.
 - **SQL editor tabs per-database** — `QueryTab` carries `database` + `savedQueryId`; tabs are filtered per `query/{database}/{table}` so `db1` tabs don't mix into `db2`. Re-saving a tab that came from a saved query updates the same row (`UPDATE query_history SET query_text, database, name WHERE id`), deleting a saved query unlinks its tab so next save creates new.
@@ -250,7 +250,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (Androi
 │       │   │   │   ├── connection/ConnectionListScreen.kt, ConnectionEditorScreen.kt
 │       │   │   │   ├── dataeditor/InlineDataEditorScreen.kt
 │       │   │   │   ├── query/SQLEditorScreen.kt
-│       │   │   │   ├── table/TableStructureScreen.kt, IndexManagementScreen.kt
+│       │   │   │   ├── table/TableStructureScreen.kt (index health box + cardinality via IndexAnalyzer)
 │       │   │   │   ├── user/UserManagementScreen.kt, UserPrivilegeDetailScreen.kt
 │       │   │   │   ├── export/, settings/
 │       │   │   │   └── …
@@ -321,7 +321,7 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 ### Current query bar
 
-`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `InlineDataEditor`, `TableStructure`, `IndexManagement`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
+`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `InlineDataEditor`, `TableStructure`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
 
 - `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy.
 - `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`.
@@ -359,7 +359,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 - **Data editor** — `DataEditorViewModel.StagedEdit` + `_pendingEdits: Map<Pair<rowIndex,colIndex>, StagedEdit>` + `_pendingDeletes: Set<rowIndex>`; grouping `by rowIndex → 1 UPDATE per row` + single `DELETE IN`. UI: cell dialog `Cancel/OK` stages locally (red `errorContainer` highlight + staged value), row delete stages; top-bar `Check` (Save) shows `Confirm Write (N)` with the full `;\n`-joined SQL; Execute → `commitPending(...)` (per-statement `currentQuery` append + sequential `executeQuery`, stop on first error), then reload.
 - **Privilege detail** — `UserPermissionViewModel._pendingPrivChanges: Map<"PRIV@onKey", Boolean>` (desired vs `onToPrivs`), `stagePrivToggle` / `buildPendingPrivSqls` / `commitPendingPrivs` (per-`GRANT/REVOKE` + `FLUSH PRIVILEGES` + `loadGrants`). UI: `effectiveChecked()` layer over `hasPrivOnTarget()`, DB/table bold via `effectiveHasAnyPriv()` (any pending `true` makes its `*.*`/`db.*`/`db.table` bold), banner `N pending change(s) | Discard | Save`, `Confirm Write (N)` with `GRANT/REVOKE …` statements.
 
-`IndexManagement` / `SQLEditor` custom SQL follow the same rule via `pendingSql/pendingAction + Confirm Write` where applicable.
+`TableStructure` index ops / `SQLEditor` custom SQL follow the same rule via `pendingSql/pendingAction + Confirm Write` where applicable.
 
 ### Query execution
 
@@ -379,11 +379,10 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 | `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state, **Manage Saved Queries** entry fixed bottom |
 | `manage_saved_queries` | Manage Saved Queries | `ui/screens/query/ManageSavedQueriesScreen.kt` | Grouped by database (`compareBy({it=="Other"}, {it})`), `AnimatedVisibility` expand, Backup/Restore, Rename/Delete/Copy/Open → `query/{db}/_` |
 | `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Per-database tabs (`QueryTab.database` + `savedQueryId`), autocomplete (no auto-popup on open), history tabs, Execute, timing |
-| `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys |
+| `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys + index list (cardinality, auto health box, create/drop) |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
 | `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix, Rename/Password dialogs |
-| `index_management/{database}/{table}` | Index management | `ui/screens/table/IndexManagementScreen.kt` | Index list + create/drop |
 
 `NavGraph` holds the only `rememberNavController()` and owns the four shared VMs (`ConnectionViewModel`, `BrowserViewModel`, `QueryViewModel`) across destinations; the remaining VMs are `hiltViewModel()` per destination.
 
