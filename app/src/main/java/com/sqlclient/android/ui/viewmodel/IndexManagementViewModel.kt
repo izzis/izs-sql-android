@@ -174,6 +174,54 @@ class IndexManagementViewModel @Inject constructor(
         }
     }
 
+    fun addColumn(database: String, table: String, columnDef: String, isLocked: Boolean = false) {
+        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val sql = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
+                _currentQuery.value = _currentQuery.value + sql
+                when (val result = connectionManager.executeQuery(sql)) {
+                    is QueryResult.UpdateSuccess -> {
+                        _operationSuccess.value = "Column added"
+                        loadColumns(database, table)
+                    }
+                    is QueryResult.Error -> _error.value = result.message
+                    else -> {}
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to add column: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun dropColumn(database: String, table: String, columnName: String, isLocked: Boolean = false) {
+        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                val sql = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
+                _currentQuery.value = _currentQuery.value + sql
+                when (val result = connectionManager.executeQuery(sql)) {
+                    is QueryResult.UpdateSuccess -> {
+                        _operationSuccess.value = "Column dropped"
+                        loadColumns(database, table)
+                    }
+                    is QueryResult.Error -> _error.value = result.message
+                    else -> {}
+                }
+            } catch (e: Exception) {
+                _error.value = "Failed to drop column: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
     fun buildCreateIndexSql(name: String, columns: List<String>, unique: Boolean, database: String, table: String): String {
         val uniqueStr = if (unique) "UNIQUE " else ""
         val colList = columns.joinToString(", ") { "`$it`" }
@@ -181,6 +229,8 @@ class IndexManagementViewModel @Inject constructor(
     }
     fun buildDropIndexSql(name: String, database: String, table: String): String = "DROP INDEX `$name` ON `$database`.`$table`"
     fun buildModifyColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` MODIFY COLUMN $columnDef"
+    fun buildAddColumnSql(database: String, table: String, columnDef: String): String = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
+    fun buildDropColumnSql(database: String, table: String, columnName: String): String = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
 
     fun clearError() {
         _error.value = null

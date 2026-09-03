@@ -17,7 +17,9 @@ data class ColumnInfo(
     val isPrimaryKey: Boolean,
     val isAutoIncrement: Boolean,
     val comment: String?,
-    val maxLength: Int?
+    val maxLength: Int?,
+    /** Raw Key flag from SHOW FULL COLUMNS: PRI / UNI / MUL / "" (priority order, as MySQL reports). */
+    val keyType: String = ""
 )
 
 data class IndexInfo(

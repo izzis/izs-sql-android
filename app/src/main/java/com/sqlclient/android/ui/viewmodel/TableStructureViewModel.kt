@@ -75,7 +75,8 @@ class TableStructureViewModel @Inject constructor(
                         isAutoIncrement = row[1].toString().contains("auto_increment") ||
                                 row[5]?.toString()?.contains("auto_increment") == true,
                         comment = row.getOrNull(8)?.toString(),
-                        maxLength = null
+                        maxLength = null,
+                        keyType = row[4].toString()
                     )
                 }
             }

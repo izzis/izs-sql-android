@@ -348,7 +348,8 @@ class BrowserViewModel @Inject constructor(
                                 isPrimaryKey = row[4].toString().contains("PRI"),
                                 isAutoIncrement = row[5]?.toString()?.contains("auto_increment") == true || row[1].toString().contains("auto_increment"),
                                 comment = row[8]?.toString(),
-                                maxLength = null
+                                maxLength = null,
+                                keyType = row[4].toString()
                             )
                         }
                         _columns.value = _columns.value + (key to columnList)
