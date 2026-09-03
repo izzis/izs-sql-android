@@ -1,6 +1,8 @@
 package com.sqlclient.android.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -40,6 +43,7 @@ import com.sqlclient.android.data.remote.model.DatabaseInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
 import com.sqlclient.android.data.remote.model.UserInfo
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DatabaseTree(
     databases: List<DatabaseInfo>,
@@ -57,6 +61,9 @@ fun DatabaseTree(
     onTableClick: (String, String) -> Unit,
     onTableSelect: (String, String) -> Unit,
     onTableDataClick: (String, String) -> Unit = { _, _ -> },
+    onCreateTable: (String) -> Unit = {},
+    onTableActions: (String, String) -> Unit = { _, _ -> },
+    isLocked: Boolean = false,
     onRefreshDatabase: (String) -> Unit = {},
     onRefreshSizes: (String) -> Unit = {},
     onUsersClick: () -> Unit,
@@ -210,6 +217,28 @@ fun DatabaseTree(
                                 )
                             }
                         }
+                        if (!isLocked && dbTables != null && searchQuery.isBlank()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onCreateTable(database.name) }
+                                    .padding(start = 20.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "New table",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         if (dbTables != null && dbTables.isNotEmpty()) {
                             filteredTables.forEach { table ->
                                 key(table) {
@@ -241,7 +270,10 @@ fun DatabaseTree(
                                         Row(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .clickable { onTableDataClick(database.name, table) }
+                                                .combinedClickable(
+                                                    onClick = { onTableDataClick(database.name, table) },
+                                                    onLongClick = { onTableActions(database.name, table) }
+                                                )
                                                 .padding(vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {

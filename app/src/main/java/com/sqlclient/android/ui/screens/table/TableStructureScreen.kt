@@ -78,7 +78,9 @@ import kotlin.math.max
 import android.widget.Toast
 import com.sqlclient.android.data.remote.model.ColumnInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
+import com.sqlclient.android.ui.components.TypeLenPicker
 import com.sqlclient.android.util.IndexAnalyzer
+import com.sqlclient.android.util.TableSql
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
@@ -286,9 +288,9 @@ fun TableStructureScreen(
             allColumnNames = columns.map { it.name },
             onDismiss = { editingColumn = null },
             onDelete = { columnToDelete = col; editingColumn = null },
-            onConfirm = { name, type, nullable, default, comment, autoIncrement, position ->
+            onConfirm = { name, type, nullable, default, comment, autoIncrement, position, unique, onUpdate ->
                 if (isLocked) { editingColumn = null; return@EditColumnDialog }
-                val colDef = buildColumnDef(name, type, nullable, default, comment, autoIncrement, position)
+                val colDef = buildColumnDef(name, type, nullable, default, comment, autoIncrement, position, unique, onUpdate)
                 val sql = indexViewModel.buildModifyColumnSql(database, table, colDef)
                 pendingSql = sql
                 pendingAction = {
@@ -303,10 +305,10 @@ fun TableStructureScreen(
         AddColumnDialog(
             allColumnNames = columns.map { it.name },
             onDismiss = { showAddColumn = false },
-            onConfirm = { name, type, nullable, default, comment, autoIncrement, primaryKey, position ->
+            onConfirm = { name, type, nullable, default, comment, autoIncrement, primaryKey, position, unique, onUpdate ->
                 if (isLocked) { showAddColumn = false; return@AddColumnDialog }
                 val pkStr = if (primaryKey) " PRIMARY KEY" else ""
-                val colDef = buildColumnDef(name, type, nullable, default, comment, autoIncrement, position) + pkStr
+                val colDef = buildColumnDef(name, type, nullable, default, comment, autoIncrement, position, unique && !primaryKey, onUpdate) + pkStr
                 val sql = indexViewModel.buildAddColumnSql(database, table, colDef)
                 pendingSql = sql
                 pendingAction = {
@@ -444,18 +446,23 @@ private fun buildColumnDef(
     default: String,
     comment: String,
     autoIncrement: Boolean,
-    position: String
+    position: String,
+    unique: Boolean = false,
+    onUpdateCurrentTimestamp: Boolean = false
 ): String {
     val nullStr = if (nullable) "NULL" else "NOT NULL"
     val autoStr = if (autoIncrement) " AUTO_INCREMENT" else ""
-    val defaultStr = if (default.isNotBlank()) " DEFAULT '${default.replace("'", "''")}'" else ""
+    val uniqueStr = if (unique) " UNIQUE" else ""
+    // Same DEFAULT quoting as the Create Table builder (bare numerics/CURRENT_TIMESTAMP).
+    val defaultStr = if (default.isNotBlank()) " DEFAULT ${TableSql.qDefault(default)}" else ""
+    val onUpdateStr = if (onUpdateCurrentTimestamp) " ON UPDATE CURRENT_TIMESTAMP" else ""
     val commentStr = if (comment.isNotBlank()) " COMMENT '${comment.replace("'", "''")}'" else ""
     val posStr = when {
         position.isEmpty() -> ""
         position == "FIRST" -> " FIRST"
         else -> " AFTER `$position`"
     }
-    return "`$name` $type $nullStr$autoStr$defaultStr$commentStr$posStr"
+    return "`$name` $type $nullStr$autoStr$uniqueStr$defaultStr$onUpdateStr$commentStr$posStr"
 }
 
 /** Fixed widths for the Columns tab, measured from content (see [measureColumnWidth]). */
@@ -699,30 +706,6 @@ private fun CreateIndexDialog(
     )
 }
 
-private val COMMON_COLUMN_TYPES = listOf(
-    "INT", "BIGINT", "SMALLINT", "TINYINT", "FLOAT", "DOUBLE", "DECIMAL(10,2)",
-    "VARCHAR(255)", "CHAR(10)", "TEXT", "MEDIUMTEXT", "LONGTEXT",
-    "DATE", "DATETIME", "TIMESTAMP", "TIME", "BOOLEAN", "JSON"
-)
-
-/** Horizontal chip row for picking a common column type (shared by Add/Edit dialogs). */
-@Composable
-private fun CommonTypeChips(selected: String, onSelect: (String) -> Unit) {
-    Text("Common types:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Spacer(modifier = Modifier.height(4.dp))
-    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(COMMON_COLUMN_TYPES.size) { idx ->
-            val t = COMMON_COLUMN_TYPES[idx]
-            androidx.compose.material3.FilterChip(
-                selected = selected.equals(t, ignoreCase = false),
-                onClick = { onSelect(t) },
-                label = { Text(t, style = MaterialTheme.typography.labelSmall) },
-                modifier = Modifier.height(28.dp)
-            )
-        }
-    }
-}
-
 /**
  * Position picker shared by Add/Edit dialogs. Position: "" = default
  * ([defaultLabel]), "FIRST" = first, else AFTER that column.
@@ -765,15 +748,20 @@ private fun EditColumnDialog(
     allColumnNames: List<String>,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
-    onConfirm: (name: String, type: String, nullable: Boolean, defaultValue: String, comment: String, autoIncrement: Boolean, position: String) -> Unit
+    onConfirm: (name: String, type: String, nullable: Boolean, defaultValue: String, comment: String, autoIncrement: Boolean, position: String, unique: Boolean, onUpdate: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf(column.name) }
-    var type by remember { mutableStateOf(column.type) }
+    var fullType by remember { mutableStateOf(column.type) }
+    var typeOk by remember { mutableStateOf(true) }
+    var formError by remember { mutableStateOf<String?>(null) }
     var nullable by remember { mutableStateOf(column.nullable) }
     var defaultValue by remember { mutableStateOf(column.defaultValue ?: "") }
     var comment by remember { mutableStateOf(column.comment ?: "") }
     var autoIncrement by remember { mutableStateOf(column.isAutoIncrement) }
+    var unique by remember { mutableStateOf(column.keyType == "UNI") }
+    var onUpdate by remember { mutableStateOf(false) }
     var position by remember { mutableStateOf("") }
+    val wasUnique = column.keyType == "UNI"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -786,13 +774,14 @@ private fun EditColumnDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = type, onValueChange = { type = it },
-                    label = { Text("Type") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                TypeLenPicker(
+                    initialType = column.type,
+                    onTypeChange = { fullType = it },
+                    onValidityChange = { typeOk = it }
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                CommonTypeChips(selected = type, onSelect = { type = it })
+                if (!typeOk) {
+                    Text("Len must be numeric, e.g. 100 or 10,2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = defaultValue, onValueChange = { defaultValue = it },
@@ -806,17 +795,42 @@ private fun EditColumnDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = nullable, onCheckedChange = { nullable = it })
-                    Text("Nullable", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = autoIncrement, onCheckedChange = { autoIncrement = it })
-                    Column {
-                        Text("Auto Increment", style = MaterialTheme.typography.bodyMedium)
-                        Text("Needs integer type + key (PRI/AUTO)",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Compact horizontally-scrollable flag strip (one row instead of four).
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    androidx.compose.material3.FilterChip(
+                        selected = nullable,
+                        onClick = { nullable = !nullable },
+                        label = { Text("NULL", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = autoIncrement,
+                        onClick = { autoIncrement = !autoIncrement },
+                        label = { Text("AI", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = unique,
+                        onClick = { unique = !unique; formError = null },
+                        label = { Text("UNIQUE", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    if (TableSql.isTemporalType(TableSql.splitType(fullType).first)) {
+                        androidx.compose.material3.FilterChip(
+                            selected = onUpdate,
+                            onClick = { onUpdate = !onUpdate },
+                            label = { Text("AUTO-UPDATE", style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(30.dp)
+                        )
                     }
+                }
+                Text("AI needs integer type + key (PRI/AUTO) • UNIQUE removal via Indexes tab",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (formError != null) {
+                    Text(formError!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 PositionDropdown(
@@ -830,26 +844,33 @@ private fun EditColumnDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, type, nullable, defaultValue, comment, autoIncrement, position) },
-                enabled = name.isNotBlank() && type.isNotBlank()
+                onClick = {
+                    // MODIFY cannot drop an existing UNIQUE index — redirect to Indexes tab.
+                    if (wasUnique && !unique) {
+                        formError = "To remove UNIQUE, Drop its index from the Indexes tab"
+                        return@TextButton
+                    }
+                    onConfirm(name, fullType, nullable, defaultValue, comment, autoIncrement, position, unique, onUpdate)
+                },
+                enabled = name.isNotBlank() && fullType.isNotBlank() && typeOk
             ) {
-                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Modify")
+                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(2.dp))
+                Text("Modify", style = MaterialTheme.typography.labelSmall)
             }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp),
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(2.dp))
+                    Text("Delete", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                 }
                 TextButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Cancel")
+                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Cancel", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -860,15 +881,18 @@ private fun EditColumnDialog(
 private fun AddColumnDialog(
     allColumnNames: List<String>,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, type: String, nullable: Boolean, defaultValue: String, comment: String, autoIncrement: Boolean, primaryKey: Boolean, position: String) -> Unit
+    onConfirm: (name: String, type: String, nullable: Boolean, defaultValue: String, comment: String, autoIncrement: Boolean, primaryKey: Boolean, position: String, unique: Boolean, onUpdate: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("VARCHAR(255)") }
+    var fullType by remember { mutableStateOf("VARCHAR(255)") }
+    var typeOk by remember { mutableStateOf(true) }
     var nullable by remember { mutableStateOf(true) }
     var defaultValue by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("") }
     var autoIncrement by remember { mutableStateOf(false) }
     var primaryKey by remember { mutableStateOf(false) }
+    var unique by remember { mutableStateOf(false) }
+    var onUpdate by remember { mutableStateOf(false) }
     var position by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -882,13 +906,14 @@ private fun AddColumnDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = type, onValueChange = { type = it },
-                    label = { Text("Type") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                TypeLenPicker(
+                    initialType = "VARCHAR(255)",
+                    onTypeChange = { fullType = it },
+                    onValidityChange = { typeOk = it }
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                CommonTypeChips(selected = type, onSelect = { type = it })
+                if (!typeOk) {
+                    Text("Len must be numeric, e.g. 100 or 10,2", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = defaultValue, onValueChange = { defaultValue = it },
@@ -902,26 +927,46 @@ private fun AddColumnDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = nullable, onCheckedChange = { nullable = it })
-                    Text("Nullable", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = autoIncrement, onCheckedChange = { autoIncrement = it })
-                    Column {
-                        Text("Auto Increment", style = MaterialTheme.typography.bodyMedium)
-                        Text("Needs integer type + key (PRI/AUTO)",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Compact horizontally-scrollable flag strip (one row instead of five).
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    androidx.compose.material3.FilterChip(
+                        selected = nullable,
+                        onClick = { nullable = !nullable },
+                        label = { Text("NULL", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = autoIncrement,
+                        onClick = { autoIncrement = !autoIncrement },
+                        label = { Text("AI", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = primaryKey,
+                        onClick = { primaryKey = !primaryKey },
+                        label = { Text("PK", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = unique,
+                        onClick = { unique = !unique },
+                        label = { Text("UNIQUE", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(30.dp)
+                    )
+                    if (TableSql.isTemporalType(TableSql.splitType(fullType).first)) {
+                        androidx.compose.material3.FilterChip(
+                            selected = onUpdate,
+                            onClick = { onUpdate = !onUpdate },
+                            label = { Text("AUTO-UPDATE", style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(30.dp)
+                        )
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = primaryKey, onCheckedChange = { primaryKey = it })
-                    Column {
-                        Text("Primary Key", style = MaterialTheme.typography.bodyMedium)
-                        Text("Appends PRIMARY KEY — e.g. id INT AUTO_INCREMENT PRIMARY KEY",
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                Text("AI needs integer type + key • UNIQUE skipped when PK is set",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 PositionDropdown(
                     allColumnNames = allColumnNames,
@@ -934,8 +979,8 @@ private fun AddColumnDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, type, nullable, defaultValue, comment, autoIncrement, primaryKey, position) },
-                enabled = name.isNotBlank() && type.isNotBlank() && !allColumnNames.any { it.equals(name, ignoreCase = true) }
+                onClick = { onConfirm(name, fullType, nullable, defaultValue, comment, autoIncrement, primaryKey, position, unique, onUpdate) },
+                enabled = name.isNotBlank() && fullType.isNotBlank() && typeOk && !allColumnNames.any { it.equals(name, ignoreCase = true) }
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))

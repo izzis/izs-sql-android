@@ -11,6 +11,8 @@ import com.sqlclient.android.data.remote.model.DatabaseInfo
 import com.sqlclient.android.data.remote.model.IndexInfo
 import com.sqlclient.android.data.remote.model.PrivilegeSet
 import com.sqlclient.android.data.repository.QueryRepository
+import com.sqlclient.android.util.SqlUtil
+import com.sqlclient.android.util.TableSql
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,6 +82,73 @@ class BrowserViewModel @Inject constructor(
 
     private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
     val currentQuery: StateFlow<List<String>> = _currentQuery
+
+    private val _operationSuccess = MutableStateFlow<String?>(null)
+    val operationSuccess: StateFlow<String?> = _operationSuccess
+    fun clearSuccess() { _operationSuccess.value = null }
+
+    /** Persist a user-confirmed write to History panel (success only, like SQL editor). */
+    private fun recordWrite(sql: String, database: String) {
+        val profileId = connectionManager.currentProfileId ?: return
+        viewModelScope.launch {
+            try { queryRepository.saveToHistory(profileId, sql, database) } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Executes one table-DDL statement. Contract: [sql] must classify as a write
+     * ([SqlUtil.isWriteQuery]) so callers always route through preview + confirm + lock.
+     */
+    private fun runTableWrite(
+        database: String,
+        sql: String,
+        successMessage: String,
+        isLocked: Boolean
+    ) {
+        if (isLocked) { _error.value = "Locked — unlock to write"; return }
+        if (!SqlUtil.isWriteQuery(sql)) { _error.value = "Refused: not a write query"; return }
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            try {
+                _currentQuery.value = _currentQuery.value + sql
+                when (val result = connectionManager.executeQuery(sql)) {
+                    is QueryResult.Error -> _error.value = result.message
+                    else -> {
+                        recordWrite(sql, database)
+                        _operationSuccess.value = successMessage
+                        refreshTables(database)
+                    }
+                }
+            } catch (e: Exception) {
+                _error.value = "Table operation failed: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun createTable(database: String, table: String, columns: List<TableSql.NewColumnSpec>, engine: String, isLocked: Boolean = false) {
+        val sql = try {
+            TableSql.buildCreateTableSql(database, table, columns, engine)
+        } catch (e: IllegalArgumentException) { _error.value = e.message; return }
+        runTableWrite(database, sql, "Table '$table' created", isLocked)
+    }
+
+    fun dropTable(database: String, table: String, isLocked: Boolean = false) {
+        runTableWrite(database, TableSql.buildDropTableSql(database, table), "Table '$table' dropped", isLocked)
+    }
+
+    fun renameTable(database: String, oldTable: String, newTable: String, isLocked: Boolean = false) {
+        val sql = try {
+            TableSql.buildRenameTableSql(database, oldTable, newTable)
+        } catch (e: IllegalArgumentException) { _error.value = e.message; return }
+        runTableWrite(database, sql, "Table renamed to '$newTable'", isLocked)
+    }
+
+    fun truncateTable(database: String, table: String, isLocked: Boolean = false) {
+        runTableWrite(database, TableSql.buildTruncateTableSql(database, table), "Table '$table' truncated", isLocked)
+    }
 
     // --- Query history (persistent, is_favorite=0, limit 200) ---
     private val _history = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())

@@ -2,8 +2,11 @@
 package com.sqlclient.android.ui.screens.browser
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,10 +93,13 @@ import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel.BrowserPanel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
+import com.sqlclient.android.ui.components.TypeLenPicker
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
+import com.sqlclient.android.util.SqlUtil
+import com.sqlclient.android.util.TableSql
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DatabaseBrowserScreen(
     viewModel: BrowserViewModel,
@@ -114,6 +120,7 @@ fun DatabaseBrowserScreen(
     isReconnecting: Boolean = false
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val databases by viewModel.databases.collectAsState()
     val visibleDatabases by viewModel.visibleDatabases.collectAsState()
     val tables by viewModel.tables.collectAsState()
@@ -137,6 +144,13 @@ fun DatabaseBrowserScreen(
 
     // isLocked comes from sessionLocked (parent)
     val snackbarHostState = remember { SnackbarHostState() }
+    // Table DDL dialog state (create/drop/rename/truncate via preview + confirm)
+    var showCreateTableDb by remember { mutableStateOf<String?>(null) }
+    var tableMenuTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showRenameTable by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingSql by remember { mutableStateOf<String?>(null) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val tableOpSuccess by viewModel.operationSuccess.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Browser", "Info")
     val activePanel by viewModel.activePanel.collectAsState()
@@ -162,6 +176,12 @@ fun DatabaseBrowserScreen(
         error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+    LaunchedEffect(tableOpSuccess) {
+        tableOpSuccess?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearSuccess()
         }
     }
 
@@ -261,6 +281,7 @@ fun DatabaseBrowserScreen(
                     BrowserPanel.USERS -> userCurrentQuery
                     BrowserPanel.HISTORY -> emptyList()
                 }
+
                 CurrentQueryBar(queries = browserQuery)
             }
         ) { paddingValues ->
@@ -307,21 +328,35 @@ fun DatabaseBrowserScreen(
                                     Text("SQL Editor", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
-                            OutlinedTextField(
-                                value = tableSearchQuery,
-                                onValueChange = { viewModel.setTableSearchQuery(it) },
-                                label = { Text("Search tables...") },
+                            Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                                singleLine = true,
-                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = {
-                                    if (tableSearchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { viewModel.setTableSearchQuery("") }) {
-                                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = tableSearchQuery,
+                                    onValueChange = { viewModel.setTableSearchQuery(it) },
+                                    label = { Text("Search tables...") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    trailingIcon = {
+                                        if (tableSearchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { viewModel.setTableSearchQuery("") }) {
+                                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                            }
                                         }
                                     }
+                                )
+                                if (!isLocked) {
+                                    IconButton(
+                                        onClick = { showCreateTableDb = db },
+                                        modifier = Modifier.size(40.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "New table", tint = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
-                            )
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             HorizontalDivider()
                         }
@@ -364,6 +399,9 @@ fun DatabaseBrowserScreen(
                                     onTableDataClick = { db, table ->
                                         onOpenDataEditor(db, table)
                                     },
+                                    onCreateTable = { db -> showCreateTableDb = db },
+                                    onTableActions = { db, table -> tableMenuTarget = db to table },
+                                    isLocked = isLocked,
                                     onUsersClick = {
                                         viewModel.setActivePanel(BrowserPanel.USERS)
                                         if (!userViewModel.hasLoaded.value) userViewModel.loadUsers()
@@ -424,7 +462,10 @@ fun DatabaseBrowserScreen(
                                                         )
                                                     }
                                                     Row(
-                                                        modifier = Modifier.weight(1f).clickable { onOpenDataEditor(selectedDatabase!!, table) }
+                                                        modifier = Modifier.weight(1f).combinedClickable(
+                                                            onClick = { onOpenDataEditor(selectedDatabase!!, table) },
+                                                            onLongClick = { tableMenuTarget = selectedDatabase!! to table }
+                                                        )
                                                             .padding(horizontal = 8.dp, vertical = 6.dp),
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -573,6 +614,145 @@ fun DatabaseBrowserScreen(
                     )
                 }
                 }
+    // ---- Table DDL: menu (long-press) ----
+    tableMenuTarget?.let { (db, table) ->
+        AlertDialog(
+            onDismissRequest = { tableMenuTarget = null },
+            title = { Text("$db.$table") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        onClick = {
+                            if (isLocked) { tableMenuTarget = null; return@TextButton }
+                            tableMenuTarget = null
+                            showRenameTable = db to table
+                        },
+                        enabled = !isLocked
+                    ) { Text("Rename") }
+                    TextButton(
+                        onClick = {
+                            if (isLocked) { tableMenuTarget = null; return@TextButton }
+                            val sql = TableSql.buildTruncateTableSql(db, table)
+                            pendingSql = sql
+                            pendingAction = { viewModel.truncateTable(db, table, isLocked = isLocked) }
+                            tableMenuTarget = null
+                        },
+                        enabled = !isLocked
+                    ) { Text("Truncate (delete all rows)", color = MaterialTheme.colorScheme.error) }
+                    TextButton(
+                        onClick = {
+                            if (isLocked) { tableMenuTarget = null; return@TextButton }
+                            val sql = TableSql.buildDropTableSql(db, table)
+                            pendingSql = sql
+                            pendingAction = { viewModel.dropTable(db, table, isLocked = isLocked) }
+                            tableMenuTarget = null
+                        },
+                        enabled = !isLocked
+                    ) { Text("Drop table", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { tableMenuTarget = null }) { Text("Cancel") } }
+        )
+    }
+
+    // ---- Table DDL: rename ----
+    showRenameTable?.let { (db, table) ->
+        var newName by remember(db, table) { mutableStateOf(table) }
+        AlertDialog(
+            onDismissRequest = { showRenameTable = null },
+            title = { Text("Rename table") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("New name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (isLocked) { showRenameTable = null; return@TextButton }
+                        val sql = try {
+                            TableSql.buildRenameTableSql(db, table, newName)
+                        } catch (e: IllegalArgumentException) {
+                            showRenameTable = null
+                            scope.launch { snackbarHostState.showSnackbar(e.message ?: "Invalid name") }
+                            return@TextButton
+                        }
+                        pendingSql = sql
+                        pendingAction = { viewModel.renameTable(db, table, newName.trim(), isLocked = isLocked) }
+                        showRenameTable = null
+                    },
+                    enabled = !isLocked && newName.isNotBlank()
+                ) { Text("Preview") }
+            },
+            dismissButton = { TextButton(onClick = { showRenameTable = null }) { Text("Cancel") } }
+        )
+    }
+
+    // ---- Table DDL: guided create ----
+    showCreateTableDb?.let { db ->
+        CreateTableDialog(
+            database = db,
+            onDismiss = { showCreateTableDb = null },
+            onPreview = { name, columns, engine ->
+                if (isLocked) { showCreateTableDb = null; return@CreateTableDialog }
+                val sql = try {
+                    TableSql.buildCreateTableSql(db, name, columns, engine)
+                } catch (e: IllegalArgumentException) {
+                    scope.launch { snackbarHostState.showSnackbar(e.message ?: "Invalid definition") }
+                    return@CreateTableDialog
+                }
+                pendingSql = sql
+                pendingAction = { viewModel.createTable(db, name.trim(), columns, engine, isLocked = isLocked) }
+                showCreateTableDb = null
+            }
+        )
+    }
+
+    // Shared Confirm Write for table DDL (also reused by Users panel pattern):
+    // executes ONLY when the previewed SQL classifies as a write query.
+    pendingSql?.let { sql ->
+        AlertDialog(
+            onDismissRequest = { pendingSql = null; pendingAction = null },
+            title = { Text("Confirm Write") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Query to be executed:", style = MaterialTheme.typography.labelSmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionContainer {
+                        Text(
+                            sql,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(sql))
+                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Copy")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val a = pendingAction
+                    pendingSql = null
+                    pendingAction = null
+                    if (SqlUtil.isWriteQuery(sql)) a?.invoke()
+                    else scope.launch { snackbarHostState.showSnackbar("Refused: not a write query") }
+                }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { pendingSql = null; pendingAction = null }) { Text("Cancel") } }
+        )
+    }
             }
         }
     }
@@ -662,7 +842,18 @@ private fun UsersPanel(
                     TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
                 }
             },
-            confirmButton = { TextButton(onClick = { val a = pendingAction; pendingSql = null; pendingAction = null; a?.invoke() }) { Text("Execute", color = MaterialTheme.colorScheme.error) } },
+            confirmButton = {
+                TextButton(onClick = {
+                    val a = pendingAction
+                    pendingSql = null
+                    pendingAction = null
+                    // Only write queries may execute from a Confirm Write path.
+                    // (Refusal is silent here: this panel has no snackbar of its own,
+                    // and all its callers send writes. Main screen has its own gated dialog.)
+                    if (SqlUtil.isWriteQuery(sql)) a?.invoke()
+                    else android.util.Log.w("Browser", "Refused non-write in Confirm Write: $sql")
+                }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
+            },
             dismissButton = { TextButton(onClick = { pendingSql = null; pendingAction = null }) { Text("Cancel") } }
         )
     }
@@ -868,6 +1059,223 @@ private fun HistoryPanel(
             dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("Cancel") } }
         )
     }
+}
+
+private var colDraftUid = 0
+private data class ColDraft(
+    val uid: Int = ++colDraftUid,
+    var name: String = "",
+    var type: String = "VARCHAR",
+    var length: String = "100",
+    var nullable: Boolean = true,
+    var default: String = "",
+    var primaryKey: Boolean = false,
+    var autoIncrement: Boolean = false,
+    var unique: Boolean = false,
+    var onUpdate: Boolean = false
+)
+
+private val tableEngines = listOf("InnoDB", "MyISAM", "MEMORY")
+
+@Composable
+private fun CreateTableDialog(
+    database: String,
+    onDismiss: () -> Unit,
+    onPreview: (String, List<TableSql.NewColumnSpec>, String) -> Unit
+) {
+    var tableName by remember { mutableStateOf("") }
+    var engine by remember { mutableStateOf("InnoDB") }
+    var engineMenu by remember { mutableStateOf(false) }
+    var columns by remember { mutableStateOf(listOf(ColDraft())) }
+    var formError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New table in $database") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = tableName,
+                    onValueChange = { tableName = it; formError = null },
+                    label = { Text("Table name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                // Engine dropdown
+                Box {
+                    OutlinedTextField(
+                        value = engine,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Engine") },
+                        trailingIcon = {
+                            IconButton(onClick = { engineMenu = true }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.ExpandMore, contentDescription = "Engine", modifier = Modifier.size(16.dp))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = engineMenu,
+                        onDismissRequest = { engineMenu = false }
+                    ) {
+                        tableEngines.forEach { e ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(e) },
+                                onClick = { engine = e; engineMenu = false }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                columns.forEachIndexed { index, col ->
+                    androidx.compose.runtime.key(col.uid) {
+                    var colState by remember { mutableStateOf(col) }
+                    // keep list in sync when a row edits
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = colState.name,
+                                    onValueChange = {
+                                        colState = colState.copy(name = it)
+                                        columns = columns.toMutableList().also { l -> l[index] = colState }
+                                        formError = null
+                                    },
+                                    label = { Text("Column ${index + 1}") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { if (columns.size > 1) columns = columns.filterIndexed { i, _ -> i != index } },
+                                    enabled = columns.size > 1,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove column", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            TypeLenPicker(
+                                initialType = TableSql.withLength(colState.type, colState.length),
+                                onTypeChange = { combined ->
+                                    val (b, l) = TableSql.splitType(combined)
+                                    // Custom raw types land here verbatim as the base; Len ignored.
+                                    if (b in TableSql.columnBaseTypes) {
+                                        colState = colState.copy(type = b, length = l)
+                                    } else {
+                                        colState = colState.copy(type = combined, length = "")
+                                    }
+                                    columns = columns.toMutableList().also { l2 -> l2[index] = colState }
+                                }
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                fun sync(next: ColDraft) {
+                                    colState = next
+                                    columns = columns.toMutableList().also { l -> l[index] = next }
+                                }
+                                androidx.compose.material3.FilterChip(
+                                    selected = colState.nullable,
+                                    onClick = { sync(colState.copy(nullable = !colState.nullable)) },
+                                    label = { Text("NULL", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                                androidx.compose.material3.FilterChip(
+                                    selected = colState.primaryKey,
+                                    onClick = { sync(colState.copy(primaryKey = !colState.primaryKey)) },
+                                    label = { Text("PK", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                                androidx.compose.material3.FilterChip(
+                                    selected = colState.autoIncrement,
+                                    onClick = {
+                                        val ai = !colState.autoIncrement
+                                        val next = colState.copy(
+                                            autoIncrement = ai,
+                                            // AUTO_INCREMENT requires a key: force PK + NOT NULL
+                                            primaryKey = if (ai) true else colState.primaryKey,
+                                            nullable = if (ai) false else colState.nullable
+                                        )
+                                        colState = next
+                                        columns = if (ai) {
+                                            // only one AUTO_INCREMENT column allowed
+                                            columns.mapIndexed { i, c ->
+                                                if (i == index) next
+                                                else if (c.autoIncrement) c.copy(autoIncrement = false) else c
+                                            }
+                                        } else {
+                                            columns.toMutableList().also { l -> l[index] = next }
+                                        }
+                                    },
+                                    label = { Text("AI", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                                androidx.compose.material3.FilterChip(
+                                    selected = colState.unique,
+                                    onClick = { sync(colState.copy(unique = !colState.unique)) },
+                                    label = { Text("UNIQUE", style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.height(30.dp)
+                                )
+                                if (TableSql.isTemporalType(colState.type)) {
+                                    androidx.compose.material3.FilterChip(
+                                        selected = colState.onUpdate,
+                                        onClick = { sync(colState.copy(onUpdate = !colState.onUpdate)) },
+                                        label = { Text("AUTO-UPDATE", style = MaterialTheme.typography.labelSmall) },
+                                        modifier = Modifier.height(30.dp)
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = colState.default,
+                                onValueChange = {
+                                    colState = colState.copy(default = it)
+                                    columns = columns.toMutableList().also { l -> l[index] = colState }
+                                },
+                                label = { Text("Default (optional)") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    } // key(col.uid)
+                }
+                TextButton(onClick = { columns = columns + ColDraft() }) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add column")
+                }
+                if (formError != null) {
+                    Text(formError!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (tableName.isBlank()) { formError = "Table name required"; return@TextButton }
+                if (columns.any { it.name.isBlank() }) { formError = "All columns need a name"; return@TextButton }
+                if (columns.any { it.type.isBlank() }) { formError = "All columns need a type"; return@TextButton }
+                val badLen = columns.firstOrNull { !TableSql.isValidLength(it.type, it.length) }
+                if (badLen != null) { formError = "Len of '${badLen.name}' must be numeric, e.g. 100 or 10,2"; return@TextButton }
+                val specs = columns.map {
+                    TableSql.NewColumnSpec(
+                        name = it.name.trim(), type = it.type.trim(),
+                        length = it.length.trim().ifEmpty { null },
+                        nullable = it.nullable, default = it.default.trim().ifEmpty { null },
+                        primaryKey = it.primaryKey, autoIncrement = it.autoIncrement,
+                        unique = it.unique, onUpdateCurrentTimestamp = it.onUpdate
+                    )
+                }
+                onPreview(tableName.trim(), specs, engine)
+            }) { Text("Preview") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
