@@ -1,71 +1,85 @@
-@file:Suppress("DEPRECATION")
 package com.sqlclient.android.util
-
-// security-crypto 1.1.0 deprecated MasterKey/EncryptedSharedPreferences in favour of
-// raw platform APIs, with no drop-in replacement. They remain fully functional, and
-// migrating away requires a reading-migration for existing stored credentials
-// (otherwise saved passwords become unreadable). Keep using them for now.
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.security.InvalidKeyException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Encrypted credential storage backed by the Android Keystore (AES-256-GCM,
+ * see [KeystoreKeyProvider]) with ciphertexts in a plain SharedPreferences
+ * file. No legacy migration: fresh installs start from an empty store.
+ */
 @Singleton
 class CredentialStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext context: Context
 ) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    companion object {
+        const val PREFS_FILE = "sql_client_secure_prefs_v2"
+    }
 
-    private val encryptedPrefs: SharedPreferences by lazy {
-        EncryptedSharedPreferences.create(
-            context,
-            "sql_client_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    private val crypto = CredentialCrypto()
+    private val keyProvider = KeystoreKeyProvider()
+
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
+
+    private fun encryptValue(plaintext: String): String {
+        return try {
+            crypto.encrypt(keyProvider.getOrCreateKey(), plaintext)
+        } catch (_: InvalidKeyException) {
+            // Key permanently invalidated (rare) — recreate once and retry.
+            keyProvider.invalidate()
+            crypto.encrypt(keyProvider.getOrCreateKey(), plaintext)
+        }
+    }
+
+    private fun decryptValue(payload: String?): String? {
+        if (payload.isNullOrEmpty()) return null
+        return try {
+            crypto.decrypt(keyProvider.getOrCreateKey(), payload)
+        } catch (_: Exception) {
+            // Missing, tampered or undecryptable entry — treat as absent.
+            null
+        }
     }
 
     fun savePassword(profileId: Long, password: String) {
-        encryptedPrefs.edit().putString("password_$profileId", password).apply()
+        prefs.edit().putString("password_$profileId", encryptValue(password)).apply()
     }
 
     fun getPassword(profileId: Long): String? {
-        return encryptedPrefs.getString("password_$profileId", null)
+        return decryptValue(prefs.getString("password_$profileId", null))
     }
 
     fun deletePassword(profileId: Long) {
-        encryptedPrefs.edit().remove("password_$profileId").apply()
+        prefs.edit().remove("password_$profileId").apply()
     }
 
     fun saveSshPassword(profileId: Long, password: String) {
-        encryptedPrefs.edit().putString("ssh_password_$profileId", password).apply()
+        prefs.edit().putString("ssh_password_$profileId", encryptValue(password)).apply()
     }
 
     fun getSshPassword(profileId: Long): String? {
-        return encryptedPrefs.getString("ssh_password_$profileId", null)
+        return decryptValue(prefs.getString("ssh_password_$profileId", null))
     }
 
     fun deleteSshPassword(profileId: Long) {
-        encryptedPrefs.edit().remove("ssh_password_$profileId").apply()
+        prefs.edit().remove("ssh_password_$profileId").apply()
     }
 
     fun saveSshPassphrase(profileId: Long, passphrase: String) {
-        encryptedPrefs.edit().putString("ssh_passphrase_$profileId", passphrase).apply()
+        prefs.edit().putString("ssh_passphrase_$profileId", encryptValue(passphrase)).apply()
     }
 
     fun getSshPassphrase(profileId: Long): String? {
-        return encryptedPrefs.getString("ssh_passphrase_$profileId", null)
+        return decryptValue(prefs.getString("ssh_passphrase_$profileId", null))
     }
 
     fun deleteSshPassphrase(profileId: Long) {
-        encryptedPrefs.edit().remove("ssh_passphrase_$profileId").apply()
+        prefs.edit().remove("ssh_passphrase_$profileId").apply()
     }
 
     fun deleteAllCredentials(profileId: Long) {

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Credential prefs are encrypted with a key that lives in the Android Keystore,
+  which is never backed up. Restoring them without the key would leave
+  unreadable entries, so exclude them from Auto Backup / full backup.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="sql_client_secure_prefs_v2.xml" />
+</full-backup-content>

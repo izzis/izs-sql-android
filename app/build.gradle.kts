@@ -92,9 +92,6 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Security - Encrypted SharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0")
-
     // MariaDB JDBC Driver - 2.4.4 is the latest version compatible with Android's java.sql and regex engine
     implementation("org.mariadb.jdbc:mariadb-java-client:2.4.4")
 

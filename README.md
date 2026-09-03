@@ -61,7 +61,7 @@ Runtime dependencies (see `app/build.gradle.kts`):
 
 - `androidx.compose:compose-bom:2024.09.03`, `material3`, extended icons, `navigation-compose`, `activity-compose`
 - `hilt-android:2.51.1` + `ksp 2.0.21-1.0.28`, `room:2.6.1` + `ksp`
-- `security-crypto:1.1.0` (EncryptedSharedPreferences)
+- `security-crypto` removed — live creds use Android Keystore AES-GCM directly, no Jetpack dep
 - `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
 - `jsch:2.28.0` (maintained mwiede fork), `kotlinx-coroutines-android:1.7.3`
 - `lifecycle-runtime-compose:2.8.7`, `lifecycle-viewmodel-compose:2.8.7`
@@ -207,7 +207,7 @@ git pull            # or re-download ZIP if you used ZIP
 - `settings.gradle.kts` — single module `:app`, `repositories { google(), mavenCentral(), gradlePluginPortal() }`.
 - `app/build.gradle.kts` — single source-of-truth for versions/SDK (see [Requirements](#requirements)).
 
-No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encrypted prefs) and never written to `Room`.
+No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (Android Keystore AES-GCM) and never written to `Room`.
 
 ---
 
@@ -259,7 +259,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (encryp
 │       │   │                                   # IndexManagementViewModel, QueryViewModel, TableStructureViewModel,
 │       │   │                                   # UserPermissionViewModel
 │       │   └── util/
-│       │       ├── CredentialStore.kt          # EncryptedSharedPreferences (sql_client_secure_prefs)
+│       │       ├── CredentialStore.kt          # Keystore AES-GCM (sql_client_secure_prefs_v2) + CredentialCrypto/KeystoreKeyProvider
 │       │       ├── ExportUtil.kt
 │       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
 │       │       ├── SqlUtil.kt                  # stripLeading/isWriteQuery (multi-statement+comments)/shouldApplyLimit (SELECT only)/buildLimitedSql
@@ -288,7 +288,7 @@ Compose (Material 3) — NavGraph (Navigation Compose, NavHost `connections` sta
         │                      PrivilegeResolver (singleton, SHOW GRANTS cache)
         ↓
 Repositories — ConnectionRepository / DatabaseRepository / QueryRepository
-        │              CredentialStore (EncryptedSharedPreferences) + Room (AppDatabase)
+        │              CredentialStore (Keystore AES-GCM) + Room (AppDatabase)
         ↓
   MariaDbConnectionManager (DriverManager + single Connection + Mutex, 8 s connect / 30 s socket, queryTimeout 30 s)
         │
@@ -296,7 +296,7 @@ Repositories — ConnectionRepository / DatabaseRepository / QueryRepository
 ```
 
 - **DI** — Hilt (`@HiltAndroidApp` `App`, `@AndroidEntryPoint` `MainActivity`, `hiltViewModel()` in `NavGraph`, `@Singleton` managers/resolver, `DatabaseModule`/`NetworkModule`/`RepositoryModule`).
-- **Persistence** — Room (`connection_profiles`, `query_history`) + `EncryptedSharedPreferences` file `sql_client_secure_prefs` keyed by `profileId`. Room `fallbackToDestructiveMigration()` for now.
+- **Persistence** — Room (`connection_profiles`, `query_history`) + `CredentialStore` (Android Keystore AES-256-GCM, ciphertexts in `sql_client_secure_prefs_v2`) keyed by `profileId`. No legacy migration (fresh install starts empty). Credential prefs are excluded from Auto Backup (Keystore keys are never backed up). Room `fallbackToDestructiveMigration()` for now.
 - **Concurrency** — single JDBC `Connection` + `Mutex queryMutex`; all queries on `Dispatchers.IO`; `viewModelScope` drives `StateFlow`. Pagination via `LIMIT/OFFSET` + `snapshotFlow` (`InlineDataEditorScreen.DataGrid` + `loadMore`).
 - **Navigation** — route set (see [Navigation & screens](#navigation--screens)); `NavGraph` is the only place that reads `ConnectionViewModel.connectionState` + `sessionLocked` and fans them out to destinations.
 
@@ -391,7 +391,7 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 
 ## Security & credentials
 
-- Passwords (DB + SSH) and SSH passphrase are **never** in Room; they live in `EncryptedSharedPreferences` file `sql_client_secure_prefs` keyed by `profile.id` via `CredentialStore` (`MasterKey` + `AES256_GCM`).
+- Passwords (DB + SSH) and SSH passphrase are **never** in Room; they live in plain `SharedPreferences` file `sql_client_secure_prefs_v2` as AES-256-GCM ciphertexts keyed by `profile.id` via `CredentialStore` (key in Android Keystore, no user auth required). The file is excluded from Auto Backup (Keystore keys are never backed up).
 - `saveProfile` / `updateProfile` persist `ConnectionProfileEntity` (no password column) and delegate sensitive updates to `CredentialStore.savePassword/saveSshPassword/saveSshPassphrase` only when the caller supplies a non-blank value.
 - `testConnection` snapshots credentials under ephemeral id `999999` so the DB tunnel does not pollute the real profile's stored creds; `connect(profile)` reads the persisted creds by `profile.id`.
 - All writes respect the live `sessionLocked` guard; in read-only sessions even staged mutations are blocked server-side (error path, not just UI disable).
@@ -467,7 +467,7 @@ Current coverage (gate for all query features):
 - `util/SqlUtilTest.kt` — 19 tests: `stripLeading` (plain/line/block/mixed), `isWriteQuery` (singles, reads, wordBoundary `INSERTINTO` false, comments leading, multi `SELECT 1; DROP`, case-insensitive), `shouldApplyLimit` (SELECT true, WRITE/SHOW false, multi-write false), `buildLimitedSql` (SELECT without LIMIT -> +200, WRITE/SHOW never +LIMIT, bulk `UPDATE 10k` stays unlimited, `preview == general_log`). **CI fails if `isWriteQuery`/`shouldApplyLimit` regresses.**
 - CI workflow `ci.yml` is the gate: any new feature that sends SQL to server (new `WRITE` prefix, new `SELECT` guard, new builder) **must** add/update `SqlUtilTest` (or new `*Test.kt`) and keep `gradlew test` green.
 
-Planned: `PrivilegeResolver.parseGrants`, `CredentialStore` round-trip, `SshTunnelManager` lifecycle, `DataEditorViewModel` staging `buildPendingSqls` grouping.
+Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEditorViewModel` staging `buildPendingSqls` grouping. Done: `CredentialCrypto` AES-GCM round-trip/wrong-key/tamper tests (`CredentialCryptoTest`, 7 cases) after the Keystore migration.
 
 ---
 

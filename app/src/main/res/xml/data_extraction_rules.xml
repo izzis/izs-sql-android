@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Same exclusions as backup_rules.xml, in API 31+ format. Credential prefs are
+  encrypted with an Android Keystore key that is never backed up — restoring
+  them without the key would leave unreadable entries.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="sql_client_secure_prefs_v2.xml" />
+    </cloud-backup>
+</data-extraction-rules>
