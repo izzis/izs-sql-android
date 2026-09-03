@@ -379,7 +379,8 @@ All writes that mutate the server or local DB go **Save → Confirm (SQL preview
 | `browser` | Database browser | `ui/screens/browser/DatabaseBrowserScreen.kt` | Drawer + `AppTopBar` (Menu + Disconnect + Refresh + Lock), lazy columns/indexes, `BackHandler` for expanded state, **Manage Saved Queries** entry fixed bottom |
 | `manage_saved_queries` | Manage Saved Queries | `ui/screens/query/ManageSavedQueriesScreen.kt` | Grouped by database (`compareBy({it=="Other"}, {it})`), `AnimatedVisibility` expand, Backup/Restore, Rename/Delete/Copy/Open → `query/{db}/_` |
 | `query/{database}/{table}` | SQL Editor | `ui/screens/query/SQLEditorScreen.kt` | Per-database tabs (`QueryTab.database` + `savedQueryId`), autocomplete (no auto-popup on open), history tabs, Execute, timing |
-| `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys + index list (cardinality, auto health box, create/drop) |
+| `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys (add/drop/edit + position/auto-inc, PRI/UNI/MUL/AUTO flags) + index list (cardinality, auto health box, create/drop) |
+| `db_structure/{database}` | Database structure | `ui/screens/browser/DbStructureScreen.kt` + `DbStructureViewModel` + `DbStructureSql` | Views / Triggers / Events / Routines per database: lazy definitions, create/edit/drop + preview, DROP+CREATE for trigger/routine edit, event enable toggle |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
 | `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix, Rename/Password dialogs |

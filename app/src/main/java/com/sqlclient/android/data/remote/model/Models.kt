@@ -31,6 +31,34 @@ data class IndexInfo(
     val cardinality: Long? = null
 )
 
+/** Row of SHOW TRIGGERS (Statement = action body, no extra query needed to display). */
+data class TriggerInfo(
+    val name: String,
+    val event: String,
+    val table: String,
+    val statement: String,
+    val timing: String,
+    val definer: String? = null
+)
+
+/** Row of SHOW EVENTS (schedule detail comes from SHOW CREATE EVENT). */
+data class EventInfo(
+    val name: String,
+    val status: String,
+    val eventType: String,
+    val executeAt: String?,
+    val intervalValue: String?,
+    val intervalField: String?,
+    val starts: String?,
+    val ends: String?
+)
+
+/** Row of information_schema.ROUTINES (kind = PROCEDURE or FUNCTION). */
+data class RoutineInfo(
+    val name: String,
+    val kind: String
+)
+
 data class ForeignKeyInfo(
     val name: String,
     val columns: List<String>,

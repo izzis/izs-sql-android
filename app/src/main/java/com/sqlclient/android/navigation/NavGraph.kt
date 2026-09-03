@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.ui.screens.browser.DatabaseBrowserScreen
+import com.sqlclient.android.ui.screens.browser.DbStructureScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionEditorScreen
 import com.sqlclient.android.ui.screens.connection.ConnectionListScreen
 import com.sqlclient.android.ui.screens.dataeditor.InlineDataEditorScreen
@@ -26,6 +27,7 @@ import com.sqlclient.android.ui.screens.user.UserPrivilegeDetailScreen
 import com.sqlclient.android.ui.viewmodel.BrowserViewModel
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
+import com.sqlclient.android.ui.viewmodel.DbStructureViewModel
 import com.sqlclient.android.ui.viewmodel.IndexManagementViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
 import com.sqlclient.android.ui.viewmodel.TableStructureViewModel
@@ -137,6 +139,9 @@ fun NavGraph(themeManager: ThemeManager) {
                     onOpenDataEditor = { db, table ->
                         navController.navigate("data_editor/$db/$table")
                     },
+                    onOpenDbStructure = { db ->
+                        navController.navigate("db_structure/$db")
+                    },
                     onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
                     onNavigateToSavedQueries = { navController.navigate("manage_saved_queries") },
                     onReconnect = { connectionViewModel.reconnect() },
@@ -206,6 +211,33 @@ fun NavGraph(themeManager: ThemeManager) {
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
                 onData = { navController.navigate("data_editor/$database/$table") },
+                onReconnect = { connectionViewModel.reconnect() },
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
+                topBarColor = topBarColor
+            )
+        }
+
+        composable(
+            "db_structure/{database}",
+            arguments = listOf(
+                navArgument("database") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val database = backStackEntry.arguments?.getString("database") ?: return@composable
+            val dbStructureViewModel: DbStructureViewModel = hiltViewModel()
+            val currentProfile = (connectionViewModel.connectionState.value as? com.sqlclient.android.ui.viewmodel.ConnectionState.Connected)?.profile
+            val topBarColor = try {
+                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(currentProfile?.color ?: "#6200EE"))
+            } catch (_: Exception) {
+                androidx.compose.ui.graphics.Color(0xFF6200EE)
+            }
+            DbStructureScreen(
+                viewModel = dbStructureViewModel,
+                connectionViewModel = connectionViewModel,
+                database = database,
+                isLocked = connectionViewModel.sessionLocked.collectAsState().value,
+                onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
+                onBack = { navController.popBackStack() },
                 onReconnect = { connectionViewModel.reconnect() },
                 isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
                 topBarColor = topBarColor

@@ -107,6 +107,7 @@ fun DatabaseBrowserScreen(
     onOpenQuery: (String, String) -> Unit,
     onOpenTableStructure: (String, String) -> Unit,
     onOpenDataEditor: (String, String) -> Unit,
+    onOpenDbStructure: (String) -> Unit = {},
     onOpenUserDetail: (String, String) -> Unit = { _, _ -> },
     onNavigateToSavedQueries: () -> Unit = {},
     onReconnect: (() -> Unit)? = null,
@@ -289,6 +290,14 @@ fun DatabaseBrowserScreen(
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.weight(1f)
                                 )
+                                Row(
+                                    modifier = Modifier.clickable { onOpenDbStructure(db) },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.ViewColumn, contentDescription = "Database Structure", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Structure", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                                }
                                 Row(
                                     modifier = Modifier.clickable { onOpenQuery(db, "_") },
                                     verticalAlignment = Alignment.CenterVertically
