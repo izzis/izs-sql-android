@@ -131,40 +131,34 @@ class MariaDbConnectionManager @Inject constructor(
         } catch (e: SQLException) {
             closeTunnelIfOpened()
             Log.e(TAG, "SQL Error: ${e.sqlState} - ${e.message}", e)
-            val msg = e.message ?: "Unknown SQL error"
-            val sqlState = e.sqlState ?: ""
-            when {
-                msg.contains("authentication protocol") || msg.contains("sha256") -> {
-                    ConnectionResult.Error("Auth failed: Server requires SSL for this authentication method. Enable 'Use SSL/TLS' in connection settings.")
-                }
-                sqlState == "28000" -> {
-                    ConnectionResult.Error("Access denied: Invalid username or password")
-                }
-                msg.contains("Unknown database") -> {
-                    ConnectionResult.Error("Database '${profile.database}' not found on server")
-                }
-                msg.contains("connect timed out") || msg.contains("Connection refused") -> {
-                    ConnectionResult.Error("Cannot reach server at $actualHost:$actualPort")
-                }
-                else -> {
-                    ConnectionResult.Error("Connection failed: $msg")
-                }
+            // Two-line: short summary for quick read + raw server message verbatim.
+            val raw = e.message ?: "Unknown SQL error"
+            val short = when {
+                raw.contains("authentication protocol", true) || raw.contains("sha256", true) ->
+                    "Auth failed: server requires SSL for this method"
+                (e.sqlState ?: "") == "28000" -> "Access denied: invalid username or password"
+                raw.contains("Unknown database", true) -> "Database '${profile.database}' not found on server"
+                raw.contains("connect timed out", true) || raw.contains("Connection refused", true) ->
+                    "Cannot reach server at $actualHost:$actualPort"
+                else -> "Connection failed"
             }
+            ConnectionResult.Error("$short\n$raw")
         } catch (e: Exception) {
             closeTunnelIfOpened()
             val raw = e.message ?: ""
             val simple = e.javaClass.simpleName
             Log.e(TAG, "Unexpected error: $simple: $raw", e)
-            // Map SSH auth failures to friendly message instead of "Unexpected error: JSchException: Auth fail"
-            if (simple.contains("JSch") || raw.contains("Auth fail", true) || raw.contains("Auth cancel", true)) {
-                ConnectionResult.Error("SSH authentication failed — check SSH username/password, key path & passphrase. ($raw)")
-            } else if (raw.contains("key", true) && (raw.contains("invalid", true) || raw.contains("unknown", true))) {
-                ConnectionResult.Error("SSH key error: $raw")
-            } else if (raw.contains("timeout", true) || simple.contains("SocketTimeout")) {
-                ConnectionResult.Error("SSH connection timed out. Check SSH host/port and network. ($raw)")
-            } else {
-                ConnectionResult.Error("Unexpected error: $simple: $raw")
+            // Two-line: short summary + raw message verbatim (incl. SSH/JSch).
+            val short = when {
+                simple.contains("JSch", true) || raw.contains("Auth fail", true) || raw.contains("Auth cancel", true) ->
+                    "SSH authentication failed"
+                raw.contains("key", true) && (raw.contains("invalid", true) || raw.contains("unknown", true)) ->
+                    "SSH key error"
+                raw.contains("timeout", true) || simple.contains("SocketTimeout", true) ->
+                    "SSH connection timed out"
+                else -> "Unexpected error: $simple"
             }
+            ConnectionResult.Error(if (raw.isBlank()) short else "$short\n$raw")
         }
     }
 
