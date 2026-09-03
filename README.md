@@ -506,36 +506,7 @@ Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEdi
 
 ## TODO — Unimplemented features
 
-> Features that are **already implemented in code** but **not yet wired into the UI**. A future AI or developer can pick these up without re-crawling the entire codebase.
-
-### 1. Export (CSV, JSON, SQL INSERT)
-
-**Status:** `ExportUtil.kt` fully implemented (129 lines), zero UI references.
-
-| Method | Description |
-|--------|-------------|
-| `exportToCsv(context, columns, rows, fileName)` | Writes query results to a `.csv` file via `FileProvider` |
-| `exportToJson(context, columns, rows, fileName)` | Writes query results to a `.json` file |
-| `exportToSqlInsert(context, table, columns, rows, fileName)` | Generates `INSERT INTO table VALUES (...)` statements |
-| `shareFile(context, file, mimeType)` | Android share intent for the exported file |
-
-**Where to add UI:** Add export buttons to `InlineDataEditorScreen` (top bar or overflow menu) and `SQLEditorScreen` (after results are shown). Pass `columns`/`rows` from the ViewModel's current result set.
-
-### 2. Insert Row dialog
-
-**Status:** `InsertRowDialog` composable implemented at `InlineDataEditorScreen.kt:1102-1154`. `showInsertDialog` state at line 121. No UI element triggers it.
-
-**Where to add UI:** Add a FAB (`FloatingActionButton`) or a `+` icon in the top bar of `InlineDataEditorScreen` that sets `showInsertDialog = true`. The dialog takes column metadata, builds an `INSERT INTO table (cols) VALUES (vals)` statement, and submits it through the existing `executeUpdate` flow.
-
-### 3. History Panel (query history browser)
-
-**Status:** ✅ Implemented — `DatabaseBrowserScreen.kt` `HistoryPanel` now shows persistent `query_history` (Room `v3` `isFavorite` included) `LazyColumn` with `search` + `Clear` confirm, per-item `Copy/Delete/Open in editor`, filtered by `connectionId` + `database` tab; `BrowserViewModel` holds `history/search` `Flow` via `QueryRepository`. Former placeholder `"Query history will appear here"` removed.
-
-### 4. Index Management standalone route
-
-**Status:** Route `index_management/{database}/{table}` defined at `NavGraph.kt:280-308`. `IndexManagementScreen` composable exists. But no screen ever navigates to this route — index management is already embedded inline in `TableStructureScreen`.
-
-**Decision needed:** Either wire the route (add a button in `TableStructureScreen` to navigate to standalone index management) or remove the dead route + unreachable `IndexManagementScreen` if inline is preferred.
+> Dipindah ke issue [#3](https://github.com/izzais/sql-client-android/issues/3) agar roadmap persistent dan bisa di-link. Isinya: Export UI wiring, Insert Row trigger, Index Management route decision, dan deferred multi-session support. (History Panel sudah ✅ done.)
 
 ---
 
