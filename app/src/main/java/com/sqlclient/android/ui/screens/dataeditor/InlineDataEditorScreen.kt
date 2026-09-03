@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -446,7 +447,8 @@ fun InlineDataEditorScreen(
                 isReadonly = isReadonly,
                 queryTimeMs = queryTimeMs,
                 limit = dataLimit,
-                onLimitChange = { viewModel.changeLimit(it) }
+                onLimitChange = { viewModel.changeLimit(it) },
+                onInsertRow = if (!isReadonly) ({ showInsertDialog = true }) else null
             )
         }
         }
@@ -965,7 +967,8 @@ private fun StatusBar(
     isReadonly: Boolean,
     queryTimeMs: Long?,
     limit: Int,
-    onLimitChange: (Int) -> Unit
+    onLimitChange: (Int) -> Unit,
+    onInsertRow: (() -> Unit)? = null
 ) {
     val presets = listOf(100, 200, 500, 1000)
     val currentIndex = presets.indexOf(limit).coerceAtLeast(0)
@@ -1004,6 +1007,11 @@ private fun StatusBar(
             Text(text = limit.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp))
             IconButton(onClick = { if (currentIndex < presets.size - 1) onLimitChange(presets[currentIndex + 1]) }, enabled = currentIndex < presets.size - 1, modifier = Modifier.size(28.dp)) {
                 Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(14.dp))
+            }
+            if (onInsertRow != null) {
+                IconButton(onClick = onInsertRow, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Insert row", modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
