@@ -52,7 +52,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 | Tooling | Version |
 |---------|---------|
-| Android Studio | Meerkat or newer (AGP 8.9.2, Kotlin 2.0.21) |
+| Android Studio | Meerkat or newer (AGP 8.10.1, Kotlin 2.3.21) |
 | JDK | 17 ( `compileSdk 36`, `minSdk 26`, `targetSdk 36`, `jvmTarget 17` ) |
 | Android SDK | `compileSdk 36`, NDK not required |
 | Gradle | Wrapper `gradlew` checked in (`gradle-8.12`), no local install needed |
@@ -60,7 +60,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 Runtime dependencies (see `app/build.gradle.kts`):
 
 - `androidx.compose:compose-bom:2024.09.03`, `material3`, extended icons, `navigation-compose`, `activity-compose`
-- `hilt-android:2.51.1` + `ksp 2.0.21-1.0.28`, `room:2.6.1` + `ksp`
+- `hilt-android:2.57.2` + `ksp 2.3.11`, `room:2.8.4` + `ksp`
 - `security-crypto` removed — live creds use Android Keystore AES-GCM directly, no Jetpack dep
 - `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
 - `jsch:2.28.0` (maintained mwiede fork), `kotlinx-coroutines-android:1.7.3`
