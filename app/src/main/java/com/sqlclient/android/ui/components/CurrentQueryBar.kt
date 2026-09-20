@@ -37,14 +37,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
+import com.sqlclient.android.util.rememberCopyToClipboard
 
 @Composable
 fun CurrentQueryBar(
@@ -58,8 +55,7 @@ fun CurrentQueryBar(
     val lastQuery = queries.lastOrNull() ?: ""
 
     var expanded by rememberSaveable { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
+    val copyToClipboard = rememberCopyToClipboard()
 
     Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -123,8 +119,7 @@ fun CurrentQueryBar(
                     } else {
                         IconButton(
                             onClick = {
-                                clipboard.setText(AnnotatedString(queries.joinToString(";\n")))
-                                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                copyToClipboard(queries.joinToString(";\n"), "Copied")
                             },
                             modifier = Modifier.size(24.dp)
                         ) {

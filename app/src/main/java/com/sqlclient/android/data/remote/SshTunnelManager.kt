@@ -50,7 +50,7 @@ class SshTunnelManager @Inject constructor() {
             testSession = jsch.getSession(sshUsername, sshHost, sshPort)
 
             if (!sshPassword.isNullOrBlank()) {
-                testSession.setPassword(sshPassword)
+                testSession.setPassword(sshPassword.toByteArray())
             }
 
             val config = Properties().apply {
@@ -99,7 +99,7 @@ class SshTunnelManager @Inject constructor() {
         val sess = jsch.getSession(sshUsername, sshHost, sshPort)
 
         if (!sshPassword.isNullOrBlank()) {
-            sess.setPassword(sshPassword)
+            sess.setPassword(sshPassword.toByteArray())
         }
 
         val config = Properties().apply {

@@ -1,6 +1,5 @@
 package com.sqlclient.android.ui.components
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -35,10 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.util.CellDisplay
+import com.sqlclient.android.util.rememberCopyToClipboard
 
 private const val MIN_COL_DP = 90
 private const val MAX_COL_DP = 360
@@ -84,8 +81,7 @@ fun DataTable(
         }
     }
     var viewingCell by remember { mutableStateOf<Triple<Int, Int, List<Any?>>?>(null) }
-    val clipboard = LocalClipboardManager.current
-    val ctx = LocalContext.current
+    val copyToClipboard = rememberCopyToClipboard()
 
     Column(
         modifier = modifier
@@ -200,9 +196,10 @@ fun DataTable(
                         TextButton(onClick = {
                             val c = viewingCell
                             viewingCell = null
+                            val updater = onQuickUpdate
                             c?.let { (_, cIdx, r) ->
                                 val cName = columns.getOrNull(cIdx)?.name ?: return@let
-                                onQuickUpdate?.invoke(cName, r)
+                                updater(cName, r)
                             }
                         }) {
                             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -210,8 +207,7 @@ fun DataTable(
                         }
                     }
                     TextButton(onClick = {
-                        clipboard.setText(AnnotatedString(raw))
-                        Toast.makeText(ctx, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                        copyToClipboard(raw, "Copied")
                         viewingCell = null
                     }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))

@@ -80,15 +80,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.data.remote.ColumnMetadata
 import com.sqlclient.android.ui.components.AppSidebar
@@ -107,6 +103,7 @@ import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.DataEditorViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
 import com.sqlclient.android.util.CellDisplay
+import com.sqlclient.android.util.rememberCopyToClipboard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -533,8 +530,7 @@ fun InlineDataEditorScreen(
     }
 
     pendingSql?.let { sql ->
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { pendingSql = null; pendingAction = null },
             title = { Text("Confirm Write") },
@@ -546,7 +542,7 @@ fun InlineDataEditorScreen(
                         Text(sql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp))
                     }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) {
+                    TextButton(onClick = { copyToClipboard(sql, "Copied") }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy")
                     }
                 }
@@ -561,8 +557,7 @@ fun InlineDataEditorScreen(
     if (showSaveConfirm) {
         val sqls = viewModel.buildPendingSqls(database, table)
         val fullSql = sqls.joinToString(";\n")
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { showSaveConfirm = false },
             title = { Text("Confirm Write (${sqls.size})") },
@@ -574,7 +569,7 @@ fun InlineDataEditorScreen(
                         Text(fullSql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp))
                     }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(fullSql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) {
+                    TextButton(onClick = { copyToClipboard(fullSql, "Copied") }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy")
                     }
                 }
@@ -588,8 +583,7 @@ fun InlineDataEditorScreen(
 
     if (showWriteConfirm) {
         val sql = viewModel.getCustomQueryPreview()
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { showWriteConfirm = false },
             title = { Text("Confirm Write Query") },
@@ -608,7 +602,7 @@ fun InlineDataEditorScreen(
                             .padding(8.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) {
+                    TextButton(onClick = { copyToClipboard(sql, "Copied") }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(modifier = Modifier.width(4.dp)); Text("Copy")
                     }
                 }
@@ -1075,8 +1069,7 @@ private fun DataGrid(
     }
     var contextMenuRow by remember { mutableStateOf<Int?>(null) }
     var contextMenuColIndex by remember { mutableStateOf<Int?>(null) } // null = row number, >= 0 = cell column
-    val clipboard = LocalClipboardManager.current
-    val ctx = LocalContext.current
+    val copyToClipboard = rememberCopyToClipboard()
 
     LaunchedEffect(lazyListState, hasMoreData, isLoadingMore) {
         snapshotFlow {
@@ -1263,8 +1256,7 @@ private fun DataGrid(
                                             text = { Text("Copy row") },
                                             onClick = {
                                                 val rowText = row.joinToString(" | ") { CellDisplay.format(it) }
-                                                clipboard.setText(AnnotatedString(rowText))
-                                                Toast.makeText(ctx, "Row copied", Toast.LENGTH_SHORT).show()
+                                                copyToClipboard(rowText, "Row copied")
                                                 contextMenuRow = null; contextMenuColIndex = null
                                             },
                                             leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) }
@@ -1303,8 +1295,7 @@ private fun DataGrid(
                                             text = { Text("Copy value") },
                                             onClick = {
                                                 val text = CellDisplay.format(cellValue)
-                                                clipboard.setText(AnnotatedString(text))
-                                                Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+                                                copyToClipboard(text, "Copied")
                                                 contextMenuRow = null; contextMenuColIndex = null
                                             },
                                             leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) }
@@ -1382,8 +1373,7 @@ private fun CellViewDialog(
     onCopy: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val clipboard = LocalClipboardManager.current
-    val ctx = LocalContext.current
+    val copyToClipboard = rememberCopyToClipboard()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(columnName, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) },
@@ -1401,8 +1391,7 @@ private fun CellViewDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                clipboard.setText(AnnotatedString(value))
-                Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show()
+                copyToClipboard(value, "Copied")
                 onDismiss()
             }) {
                 Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))

@@ -31,7 +31,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 ## Features
 
 - **Connection management** — create/edit/delete profiles, colored badges, read-only default per connection, `enableEdgeToEdge` UI.
-- **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.github.mwiede:jsch:2.28.0`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
+- **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.github.mwiede:jsch:2.28.7`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
 - **Database browser** — sidebar (`AppSidebar`/`DatabaseTree`) + main panel; database/table lists are **privilege-filtered** via `PrivilegeResolver` (`PrivilegeSet`), manual refresh, `windowInsets` cache.
 - **Table inspection** — `SHOW TABLES` / `SHOW FULL COLUMNS FROM db.table` lazy-loaded on expand (columns/indexes), `SYSTEM_SCHEMAS` filtered out.
 - **SQL editor with autocomplete** — monospace editor with syntax highlighting (`SqlSyntaxHighlight` tokenizer + `VisualTransformation`), context-aware autocomplete dropdown (`SqlEditorWithAutocomplete`): SQL keywords, dot-prefix `db.table.column` navigation, backtick/quote identifiers, multi-table column merge across FROM/JOIN clauses, JOIN ON autocomplete with columns from all joined tables. Write queries show a confirm dialog before execution. TopBar refresh re-executes only read queries.
@@ -52,19 +52,19 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 | Tooling | Version |
 |---------|---------|
-| Android Studio | Meerkat or newer (AGP 8.10.1, Kotlin 2.3.21) |
-| JDK | 17 ( `compileSdk 36`, `minSdk 26`, `targetSdk 36`, `jvmTarget 17` ) |
-| Android SDK | `compileSdk 36`, NDK not required |
-| Gradle | Wrapper `gradlew` checked in (`gradle-8.12`), no local install needed |
+| Android Studio | Quail or newer (AGP 9.4.1, Kotlin 2.3.21) |
+| JDK | 17+ ( `compileSdk 37`, `minSdk 26`, `targetSdk 36`, `jvmTarget 17` ) |
+| Android SDK | `compileSdk 37` (platform `android-37.2`), NDK not required |
+| Gradle | Wrapper `gradlew` checked in (`gradle-9.7.1`), no local install needed |
 
 Runtime dependencies (see `app/build.gradle.kts`):
 
-- `androidx.compose:compose-bom:2024.09.03`, `material3`, extended icons, `navigation-compose`, `activity-compose`
-- `hilt-android:2.57.2` + `ksp 2.3.11`, `room:2.8.4` + `ksp`
+- `androidx.compose:compose-bom:2026.09.00`, `material3`, extended icons, `navigation-compose:2.10.1`, `activity-compose:1.13.0`
+- `hilt-android:2.60.1` + `ksp 2.3.12`, `androidx.hilt:hilt-*:1.4.0`, `room:2.8.5` + `ksp`
 - `security-crypto` removed — live creds use Android Keystore AES-GCM directly, no Jetpack dep
 - `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
-- `jsch:2.28.0` (maintained mwiede fork), `kotlinx-coroutines-android:1.7.3`
-- `lifecycle-runtime-compose:2.8.7`, `lifecycle-viewmodel-compose:2.8.7`
+- `jsch:2.28.7` (maintained mwiede fork), `kotlinx-coroutines-android:1.11.0`
+- `core-ktx:1.19.0`, `lifecycle-*:2.11.0`, test `junit:1.3.0` / `espresso:3.7.0`
 
 ---
 
@@ -76,14 +76,14 @@ This is the **developer build path** (no Play Store / no prebuilt APK yet). Do i
 
 **Via git (recommended):**
 ```bash
-git clone git@github.com:izzais/sql-client-android.git
+git clone git@github.com:izzis/izs-sql-android.git
 # or HTTPS if you have no SSH key:
-# git clone https://github.com/izzais/sql-client-android.git
-cd sql-client-android
+# git clone https://github.com/izzis/izs-sql-android.git
+cd izs-sql-android
 ```
 
 **Via ZIP (no git needed):**
-GitHub → **Code ▼ → Download ZIP** → extract → `cd sql-client-android` (same folder as `gradlew`). Functionally identical to `git clone`.
+GitHub → **Code ▼ → Download ZIP** → extract → `cd izs-sql-android` (same folder as `gradlew`). Functionally identical to `git clone`.
 
 ### 2. Install prerequisites
 
@@ -131,23 +131,23 @@ export ANDROID_HOME="$HOME/Android/Sdk"
 export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-# 5. Accept licenses + install required SDK components (Android 36 matches compileSdk 36)
+# 5. Accept licenses + install required SDK components (Android 37 matches compileSdk 37)
 yes | sdkmanager --licenses
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+sdkmanager "platform-tools" "platforms;android-37.2" "build-tools;36.0.0"
 
 # 6. Verify
-sdkmanager --list | grep -E "platforms;android-36|build-tools;36"
+sdkmanager --list | grep -E "platforms;android-37|build-tools;36"
 adb --version
 ```
 
-`build-tools` `36.0.0` and `platforms;android-36` are the minimum required by `app/build.gradle.kts` (`compileSdk 36`, `targetSdk 36`). Newer patch versions also work.
+`build-tools` `36.0.0` and `platforms;android-37.2` are the minimum required by `app/build.gradle.kts` (`compileSdk 37`, `targetSdk 36`). Newer patch versions also work.
 
 ### 3. Point Gradle at the SDK
 
 `local.properties` is **gitignored** — never commit it.
 
 ```bash
-cd /path/to/sql-client-android
+cd /path/to/izs-sql-android
 
 # Option 1: create local.properties (most reliable)
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
@@ -263,8 +263,8 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (Androi
 │       │       ├── ExportUtil.kt
 │       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
 │       │       ├── SqlUtil.kt                  # stripLeading/isWriteQuery (multi-statement+comments)/shouldApplyLimit (SELECT only)/buildLimitedSql
-│       │       ├── ThemeManager.kt
-│       │       └── ThreadUtil.kt
+│       │       ├── Clipboard.kt                # rememberCopyToClipboard via LocalClipboard (copy + optional toast)
+│       │       └── ThemeManager.kt
 │       └── res/                                # strings, themes, file_provider_paths.xml, mipmap icons
 ├── build.gradle.kts                            # root plugins block
 ├── settings.gradle.kts
@@ -296,7 +296,7 @@ Repositories — ConnectionRepository / DatabaseRepository / QueryRepository
 ```
 
 - **DI** — Hilt (`@HiltAndroidApp` `App`, `@AndroidEntryPoint` `MainActivity`, `hiltViewModel()` in `NavGraph`, `@Singleton` managers/resolver, `DatabaseModule`/`NetworkModule`/`RepositoryModule`).
-- **Persistence** — Room (`connection_profiles`, `query_history`) + `CredentialStore` (Android Keystore AES-256-GCM, ciphertexts in `sql_client_secure_prefs_v2`) keyed by `profileId`. No legacy migration (fresh install starts empty). Credential prefs are excluded from Auto Backup (Keystore keys are never backed up). Room `fallbackToDestructiveMigration()` for now.
+- **Persistence** — Room (`connection_profiles`, `query_history`) + `CredentialStore` (Android Keystore AES-256-GCM, ciphertexts in `sql_client_secure_prefs_v2`) keyed by `profileId`. No legacy migration (fresh install starts empty). Credential prefs are excluded from Auto Backup (Keystore keys are never backed up). Room `fallbackToDestructiveMigration(dropAllTables = true)` for now.
 - **Concurrency** — single JDBC `Connection` + `Mutex queryMutex`; all queries on `Dispatchers.IO`; `viewModelScope` drives `StateFlow`. Pagination via `LIMIT/OFFSET` + `snapshotFlow` (`InlineDataEditorScreen.DataGrid` + `loadMore`).
 - **Navigation** — route set (see [Navigation & screens](#navigation--screens)); `NavGraph` is the only place that reads `ConnectionViewModel.connectionState` + `sessionLocked` and fans them out to destinations.
 
@@ -449,7 +449,7 @@ Tips:
 
 - `DatabaseBrowserScreen` is the right place to debug privilege filtering — set a breakpoint in `PrivilegeResolver.filter*()` or watch `visibleDatabases`.
 - `MariaDbConnectionManager` logs every `executeQuery` failure; map `JSchException: Auth fail` etc. to user strings in `ConnectionRepository` if you add new error branches.
-- Room is currently `fallbackToDestructiveMigration()` — bumping `AppDatabase.version` without a migration will drop `connection_profiles` / `query_history` on upgrade (fine for alpha).
+- Room is currently `fallbackToDestructiveMigration(dropAllTables = true)` — bumping `AppDatabase.version` without a migration will drop `connection_profiles` / `query_history` on upgrade (fine for alpha).
 
 ---
 
@@ -506,7 +506,7 @@ Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEdi
 
 ## TODO — Unimplemented features
 
-> Dipindah ke issue [#3](https://github.com/izzais/sql-client-android/issues/3) agar roadmap persistent dan bisa di-link. Isinya: Export UI wiring, Insert Row trigger, Index Management route decision, dan deferred multi-session support. (History Panel sudah ✅ done.)
+> Dipindah ke issue [#3](https://github.com/izzis/izs-sql-android/issues/3) agar roadmap persistent dan bisa di-link. Isinya: Export UI wiring, Insert Row trigger, Index Management route decision, dan deferred multi-session support. (History Panel sudah ✅ done.)
 
 ---
 

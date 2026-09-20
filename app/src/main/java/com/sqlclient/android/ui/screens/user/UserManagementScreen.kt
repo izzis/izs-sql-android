@@ -42,8 +42,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.TextButton
@@ -60,18 +60,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
 import com.sqlclient.android.data.remote.model.UserInfo
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
+import com.sqlclient.android.util.rememberCopyToClipboard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,7 +161,7 @@ fun UserManagementScreen(
                 .padding(paddingValues)
         ) {
             ReconnectBanner(message = reconnectMessage)
-            TabRow(selectedTabIndex = selectedTab) {
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
@@ -253,8 +250,7 @@ fun UserManagementScreen(
     }
 
     pendingSql?.let { sql ->
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { pendingSql = null; pendingAction = null },
             title = { Text("Confirm Write") },
@@ -264,7 +260,7 @@ fun UserManagementScreen(
                     Spacer(Modifier.height(8.dp))
                     SelectionContainer { Text(sql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp)) }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
+                    TextButton(onClick = { copyToClipboard(sql, "Copied") }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
                 }
             },
             confirmButton = { TextButton(onClick = { val a = pendingAction; pendingSql = null; pendingAction = null; a?.invoke() }) { Text("Execute", color = MaterialTheme.colorScheme.error) } },
@@ -337,7 +333,7 @@ private fun UsersTab(
             items(users, key = { "${it.user}@${it.host}" }) { user ->
                 UserCard(
                     user = user,
-                    isSelected = selectedUser?.user == user.user && selectedUser?.host == user.host,
+                    isSelected = selectedUser?.user == user.user && selectedUser.host == user.host,
                     onClick = { onSelectUser(user) },
                     onDelete = { onDeleteUser(user) }
                 )

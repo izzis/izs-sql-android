@@ -7,7 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -142,7 +142,7 @@ fun NavGraph(themeManager: ThemeManager) {
                     onOpenDbStructure = { db ->
                         navController.navigate("db_structure/$db")
                     },
-                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
+                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, Charsets.UTF_8)}") },
                     onNavigateToSavedQueries = { navController.navigate("manage_saved_queries") },
                     onReconnect = { connectionViewModel.reconnect() },
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
@@ -285,7 +285,7 @@ fun NavGraph(themeManager: ThemeManager) {
                 isLocked = connectionViewModel.sessionLocked.collectAsState().value,
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
-                onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
+                onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, Charsets.UTF_8)}") },
                 onReconnect = { connectionViewModel.reconnect() },
                 isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
             )

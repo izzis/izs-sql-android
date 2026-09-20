@@ -64,9 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +76,7 @@ import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.QueryViewModel
+import com.sqlclient.android.util.rememberCopyToClipboard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,7 +109,7 @@ fun ManageSavedQueriesScreen(
     val currentQuery by queryViewModel.currentQuery.collectAsState()
     val reconnectMessage by connectionViewModel.reconnectMessage.collectAsState()
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -294,8 +293,7 @@ fun ManageSavedQueriesScreen(
                                         expandedQueryIds = if (item.entity.id in expandedQueryIds) expandedQueryIds - item.entity.id else expandedQueryIds + item.entity.id
                                     },
                                     onCopy = {
-                                        clipboard.setText(AnnotatedString(item.entity.queryText))
-                                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                        copyToClipboard(item.entity.queryText, "Copied")
                                     },
                                     onRenameClick = {
                                         renameTarget = item.entity

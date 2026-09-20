@@ -576,7 +576,6 @@ class DataEditorViewModel @Inject constructor(
             }
             is QueryResult.UpdateSuccess -> recordWrite(limitedSql, currentDatabase.ifBlank { null })
             is QueryResult.Error -> _error.value = result.message
-            else -> {}
         }
     }
 

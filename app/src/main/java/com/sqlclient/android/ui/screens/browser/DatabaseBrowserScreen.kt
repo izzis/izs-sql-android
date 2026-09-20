@@ -59,8 +59,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -73,11 +73,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -97,6 +93,7 @@ import com.sqlclient.android.ui.components.TypeLenPicker
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
 import com.sqlclient.android.util.SqlUtil
 import com.sqlclient.android.util.TableSql
+import com.sqlclient.android.util.rememberCopyToClipboard
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -119,8 +116,7 @@ fun DatabaseBrowserScreen(
     onReconnect: (() -> Unit)? = null,
     isReconnecting: Boolean = false
 ) {
-    val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val copyToClipboard = rememberCopyToClipboard()
     val databases by viewModel.databases.collectAsState()
     val visibleDatabases by viewModel.visibleDatabases.collectAsState()
     val tables by viewModel.tables.collectAsState()
@@ -576,7 +572,7 @@ fun DatabaseBrowserScreen(
                             val (db, table) = selectedTable!!
                             if (db == selectedDatabase) {
                                 HorizontalDivider()
-                                TabRow(selectedTabIndex = selectedTab) {
+                                PrimaryTabRow(selectedTabIndex = selectedTab) {
                                     tabs.forEachIndexed { index, title ->
                                         Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title) })
                                     }
@@ -732,8 +728,7 @@ fun DatabaseBrowserScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = {
-                        clipboard.setText(AnnotatedString(sql))
-                        Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                        copyToClipboard(sql, "Copied")
                     }) {
                         Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -828,8 +823,7 @@ private fun UsersPanel(
         )
     }
     pendingSql?.let { sql ->
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { pendingSql = null; pendingAction = null },
             title = { Text("Confirm Write") },
@@ -839,7 +833,7 @@ private fun UsersPanel(
                     Spacer(Modifier.height(8.dp))
                     SelectionContainer { Text(sql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp)) }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
+                    TextButton(onClick = { copyToClipboard(sql, "Copied") }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
                 }
             },
             confirmButton = {
@@ -938,8 +932,7 @@ private fun HistoryPanel(
 ) {
     val history by viewModel.history.collectAsState()
     val search by viewModel.historySearch.collectAsState()
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
+    val copyToClipboard = rememberCopyToClipboard()
     var showClearConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(profile.id) { viewModel.loadHistory(profile.id) }
@@ -1003,7 +996,7 @@ private fun HistoryPanel(
                                 }
                                 if (!item.database.isNullOrBlank()) {
                                     Text(
-                                        text = item.database!!,
+                                        text = item.database,
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Bold,
@@ -1013,8 +1006,7 @@ private fun HistoryPanel(
                                 Text(timeStr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(modifier = Modifier.weight(1f))
                                 IconButton(onClick = {
-                                    clipboard.setText(AnnotatedString(item.queryText))
-                                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                    copyToClipboard(item.queryText, "Copied")
                                 }, modifier = Modifier.size(28.dp)) {
                                     Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(14.dp))
                                 }
@@ -1035,8 +1027,7 @@ private fun HistoryPanel(
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(onClick = {
-                                    clipboard.setText(AnnotatedString(item.queryText))
-                                    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                                    copyToClipboard(item.queryText, "Copied")
                                 }) { Text("Copy", style = MaterialTheme.typography.labelSmall) }
                             }
                         }

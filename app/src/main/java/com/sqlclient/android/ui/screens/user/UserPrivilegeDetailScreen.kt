@@ -47,19 +47,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
 import com.sqlclient.android.data.remote.model.UserInfo
 import com.sqlclient.android.ui.components.AppTopBar
 import com.sqlclient.android.ui.components.CurrentQueryBar
 import com.sqlclient.android.ui.components.ReconnectBanner
 import com.sqlclient.android.ui.viewmodel.ConnectionViewModel
 import com.sqlclient.android.ui.viewmodel.UserPermissionViewModel
+import com.sqlclient.android.util.rememberCopyToClipboard
 
 private val PRIVS = listOf("SELECT","INSERT","UPDATE","DELETE","CREATE","DROP","ALTER","INDEX")
 
@@ -356,8 +353,7 @@ fun UserPrivilegeDetailScreen(
     if (showPrivSaveConfirm) {
         val sqls = viewModel.buildPendingPrivSqls(user, host)
         val fullSql = sqls.joinToString(";\n")
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { showPrivSaveConfirm = false },
             title = { Text("Confirm Write (${sqls.size})") },
@@ -367,7 +363,7 @@ fun UserPrivilegeDetailScreen(
                     Spacer(Modifier.height(8.dp))
                     SelectionContainer { Text(fullSql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp)) }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(fullSql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
+                    TextButton(onClick = { copyToClipboard(fullSql, "Copied") }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
                 }
             },
             confirmButton = { TextButton(onClick = { showPrivSaveConfirm = false; viewModel.commitPendingPrivs(user, host, isLocked = isLocked) }) { Text("Execute", color = MaterialTheme.colorScheme.error) } },
@@ -375,8 +371,7 @@ fun UserPrivilegeDetailScreen(
         )
     }
     pendingSql?.let { sql ->
-        val clipboard = LocalClipboardManager.current
-        val ctx = LocalContext.current
+        val copyToClipboard = rememberCopyToClipboard()
         AlertDialog(
             onDismissRequest = { pendingSql = null; pendingAction = null },
             title = { Text("Confirm Write") },
@@ -386,7 +381,7 @@ fun UserPrivilegeDetailScreen(
                     Spacer(Modifier.height(8.dp))
                     SelectionContainer { Text(sql, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).padding(8.dp)) }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(sql)); Toast.makeText(ctx, "Copied", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
+                    TextButton(onClick = { copyToClipboard(sql, "Copied") }) { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy") }
                 }
             },
             confirmButton = { TextButton(onClick = { val a = pendingAction; pendingSql = null; pendingAction = null; a?.invoke() }) { Text("Execute", color = MaterialTheme.colorScheme.error) } },

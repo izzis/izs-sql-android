@@ -22,7 +22,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ConnectionViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
+    @param:ApplicationContext private val appContext: Context,
     private val connectionRepository: ConnectionRepository,
     private val credentialStore: CredentialStore,
     private val sshTunnelManager: SshTunnelManager,

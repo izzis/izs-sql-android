@@ -11,7 +11,7 @@ import javax.inject.Singleton
 
 @Singleton
 class ThemeManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
