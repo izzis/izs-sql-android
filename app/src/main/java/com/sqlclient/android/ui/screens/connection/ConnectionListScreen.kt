@@ -109,6 +109,15 @@ fun ConnectionListScreen(
     }
     val openDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
+            // Smart: .dbp/data-sources.json is processed directly, .enc asks for its password.
+            viewModel.startSmartImport(uri)
+        }
+    }
+
+    val requestEncPassword by viewModel.requestEncPassword.collectAsState()
+    LaunchedEffect(requestEncPassword) {
+        requestEncPassword?.let { uri ->
+            viewModel.clearEncPasswordRequest()
             pendingImportUri = uri
             importPassword = ""
             showImportDialog = true
@@ -163,11 +172,11 @@ fun ConnectionListScreen(
                         )
                     }
                     IconButton(onClick = {
-                        openDocLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                        openDocLauncher.launch(arrayOf("application/octet-stream", "application/zip", "application/json", "*/*"))
                     }) {
                         Icon(
                             imageVector = Icons.Default.Download,
-                            contentDescription = "Import"
+                            contentDescription = "Import (.enc / DBeaver .dbp)"
                         )
                     }
                     IconButton(onClick = { searchQuery = if (searchQuery.isNotEmpty()) "" else " " }) {
@@ -305,7 +314,7 @@ fun ConnectionListScreen(
             title = { Text("Export profiles") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("File akan terenkripsi pakai master password. Password tidak disimpan di app (mirip SSH key).", style = MaterialTheme.typography.bodySmall)
+                    Text("The file will be encrypted with a master password. The password is not stored in the app (SSH-key-like).", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = exportPassword,
                         onValueChange = { exportPassword = it },
@@ -348,7 +357,7 @@ fun ConnectionListScreen(
             title = { Text("Import profiles") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Masukkan master password untuk membuka file .enc", style = MaterialTheme.typography.bodySmall)
+                    Text("Enter the master password to open the .enc file", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = importPassword,
                         onValueChange = { importPassword = it },

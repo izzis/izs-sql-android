@@ -45,6 +45,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Current query bar** — `CurrentQueryBar` bottom bar shows **all SQL queries** (`List<String>`) executed to render the current page (query log). Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy-to-clipboard. Every `connectionManager.executeQuery` call is tracked in `_currentQuery` — no hidden queries.
 - **Export** — `ExportUtil` helper (CSV/etc.) via `FileProvider`.
 - **Profile backup (encrypted)** — Connection list top bar `Upload` (Export) / `Download` (Import) via SAF, file `.enc` encrypted with master password (`ProfileCrypto` `PBKDF2 120k + AES-256-CBC` `Salted__` header), password not stored in app (SSH-key-like). Export includes `id` for per-profile conflict resolution; import shows per-duplicate `Replace / Skip / Insert as New` + `Apply to all remaining duplicates (x left)` (2-line) popup, `tap outside = skip remaining` (abort same result, no rollback), auto `Insert` for file without `id` (backward compat). Decrypt outside app via `openssl` (see [Security & credentials](#security--credentials)).
+- **Import from DBeaver** — the `Download` (Import) button accepts `.dbp` files (File → Export → DBeaver → Project) or raw `data-sources.json`; `.enc` files still ask for their master password. Only MySQL/MariaDB connections are picked up (others are skipped and reported). Passwords **are imported** because DBeaver's credential format uses a fixed key that is public in DBeaver's open source (`BaseProjectImpl.LOCAL_KEY_CACHE`, AES-128-CBC) — unless the project uses a Master/Project password (DBeaver omits credentials on export in that case). SSH tunnels come along (host/port/user) without their secrets. Profiles without username/password are still created and must be completed in the editor. Duplicates go through the same `Replace/Skip/Insert` conflict flow as `.enc` import. Compatible with the DBeaver Community Edition (Apache-2.0) project export format; no DBeaver code is included in this app.
 
 ---
 
@@ -264,6 +265,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (Androi
 │       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
 │       │       ├── SqlUtil.kt                  # stripLeading/isWriteQuery (multi-statement+comments)/shouldApplyLimit (SELECT only)/buildLimitedSql
 │       │       ├── Clipboard.kt                # rememberCopyToClipboard via LocalClipboard (copy + optional toast)
+│       │       ├── DbeaverImport.kt            # MySQL/MariaDB connection import from .dbp/data-sources.json + credentials-config.json decryption
 │       │       └── ThemeManager.kt
 │       └── res/                                # strings, themes, file_provider_paths.xml, mipmap icons
 ├── build.gradle.kts                            # root plugins block
@@ -506,7 +508,7 @@ Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEdi
 
 ## TODO — Unimplemented features
 
-> Dipindah ke issue [#3](https://github.com/izzis/izs-sql-android/issues/3) agar roadmap persistent dan bisa di-link. Isinya: Export UI wiring, Insert Row trigger, Index Management route decision, dan deferred multi-session support. (History Panel sudah ✅ done.)
+> Moved to issue [#3](https://github.com/izzis/izs-sql-android/issues/3) to keep the roadmap persistent and linkable. Contents: Export UI wiring, Insert Row trigger, Index Management route decision, and deferred multi-session support. (History Panel already ✅ done.)
 
 ---
 

@@ -7,6 +7,7 @@ import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
 import com.sqlclient.android.data.remote.ConnectionResult
 import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.util.CredentialStore
+import com.sqlclient.android.util.DbeaverImport
 import com.sqlclient.android.util.ProfileCrypto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -168,6 +169,63 @@ class ConnectionRepository @Inject constructor(
     )
 
     data class ImportResult(val imported: Int, val replaced: Int, val skipped: Int)
+
+    data class DbeaverParseOutcome(
+        val profiles: List<ParsedProfile>,
+        val skipped: Int,
+        val withoutPassword: Int,
+        val withoutUsername: Int,
+        val credentialsLocked: Boolean
+    )
+
+    /**
+     * Parse MySQL/MariaDB connections from a DBeaver file (`.dbp` or `data-sources.json`).
+     * Passwords are included when decryptable (no Master/Project password on the DBeaver side).
+     */
+    suspend fun parseDbeaverProfiles(context: Context, uri: Uri): DbeaverParseOutcome = withContext(Dispatchers.IO) {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("Cannot read file")
+        val res = try {
+            DbeaverImport.parse(bytes)
+        } catch (e: IllegalArgumentException) {
+            throw e
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Not a valid DBeaver file: ${e.message}")
+        }
+        if (res.profiles.isEmpty()) {
+            throw IllegalArgumentException(
+                if (res.skippedNonMysql > 0) "No MySQL/MariaDB connections in this file (${res.skippedNonMysql} other connections skipped)"
+                else "No importable connections in this file"
+            )
+        }
+        val parsed = res.profiles.map { d ->
+            ParsedProfile(
+                ConnectionProfileEntity(
+                    id = 0,
+                    name = d.name,
+                    host = d.host,
+                    port = d.port,
+                    database = d.database,
+                    username = d.username,
+                    isReadonly = d.isReadonly,
+                    useSshTunnel = d.useSshTunnel,
+                    sshHost = d.sshHost,
+                    sshPort = d.sshPort,
+                    sshUsername = d.sshUsername
+                ),
+                d.password,
+                d.sshPassword,
+                ""
+            )
+        }
+        DbeaverParseOutcome(
+            parsed,
+            res.skippedNonMysql + res.skippedInvalid,
+            parsed.count { it.password.isEmpty() },
+            parsed.count { it.profile.username.isEmpty() },
+            res.credentialsLocked
+        )
+    }
 
     suspend fun decryptAndParseProfiles(context: Context, uri: Uri, masterPassword: String): List<ParsedProfile> = withContext(Dispatchers.IO) {
         if (masterPassword.length < 8) throw IllegalArgumentException("Master password must be at least 8 characters")

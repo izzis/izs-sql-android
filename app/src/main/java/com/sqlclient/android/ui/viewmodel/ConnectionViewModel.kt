@@ -2,6 +2,7 @@ package com.sqlclient.android.ui.viewmodel
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sqlclient.android.data.local.entity.ConnectionProfileEntity
@@ -10,6 +11,7 @@ import com.sqlclient.android.data.remote.MariaDbConnectionManager
 import com.sqlclient.android.data.remote.SshTunnelManager
 import com.sqlclient.android.data.repository.ConnectionRepository
 import com.sqlclient.android.util.CredentialStore
+import com.sqlclient.android.util.DbeaverImport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -251,6 +253,13 @@ class ConnectionViewModel @Inject constructor(
     private var importInserted: Int = 0
     private var importSkipped: Int = 0
     private var applyAll: ConnectionRepository.ImportAction? = null
+    private var importNote: String? = null
+
+    // Requests the .enc master password — set when the picked file is not DBeaver, observed by UI.
+    private val _requestEncPassword = MutableStateFlow<Uri?>(null)
+    val requestEncPassword: StateFlow<Uri?> = _requestEncPassword.asStateFlow()
+
+    fun clearEncPasswordRequest() { _requestEncPassword.value = null }
 
     fun clearImportConflict() { _importConflict.value = ImportConflict.Idle }
 
@@ -262,8 +271,10 @@ class ConnectionViewModel @Inject constructor(
             importSkipped += remaining
             _importConflict.value = ImportConflict.Idle
             pendingImport = emptyList()
-            _exportImportMessage.value = "Import stopped — $importInserted inserted, $importReplaced replaced, $importSkipped skipped (remaining skipped)"
+            val stopMsg = "Import stopped — $importInserted inserted, $importReplaced replaced, $importSkipped skipped (remaining skipped)"
+            _exportImportMessage.value = if (importNote != null) "$stopMsg (${importNote})" else stopMsg
             applyAll = null
+            importNote = null
         }
     }
 
@@ -304,6 +315,49 @@ class ConnectionViewModel @Inject constructor(
                 pendingIndex = 0
                 importReplaced = 0; importInserted = 0; importSkipped = 0
                 applyAll = null
+                importNote = null
+                processNextImport()
+            } catch (e: Exception) {
+                _exportImportMessage.value = e.message ?: "Import failed"
+            }
+        }
+    }
+
+    /** Smart import: DBeaver .dbp/data-sources.json is processed directly, anything else asks for the .enc password. */
+    fun startSmartImport(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val cr = appContext.contentResolver
+                val displayName = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+                val bytes = cr.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw IllegalArgumentException("Cannot read file")
+                if (!DbeaverImport.looksLikeDbeaver(bytes, displayName ?: uri.toString())) {
+                    _requestEncPassword.value = uri
+                    return@launch
+                }
+                startDbeaverImport(uri)
+            } catch (e: Exception) {
+                _exportImportMessage.value = e.message ?: "Import failed"
+            }
+        }
+    }
+
+    fun startDbeaverImport(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val outcome = connectionRepository.parseDbeaverProfiles(appContext, uri)
+                pendingImport = outcome.profiles
+                pendingIndex = 0
+                importReplaced = 0; importInserted = 0; importSkipped = 0
+                applyAll = null
+                val bits = mutableListOf<String>()
+                if (outcome.skipped > 0) bits.add("${outcome.skipped} skipped (not MySQL/incomplete)")
+                if (outcome.withoutUsername > 0) bits.add("${outcome.withoutUsername} without username — complete in the editor")
+                if (outcome.withoutPassword > 0) bits.add("${outcome.withoutPassword} without password — enter manually in the editor")
+                if (outcome.credentialsLocked) bits.add("credentials locked by DBeaver Project/Master password")
+                importNote = if (bits.isEmpty()) null else "DBeaver: " + bits.joinToString("; ")
                 processNextImport()
             } catch (e: Exception) {
                 _exportImportMessage.value = e.message ?: "Import failed"
@@ -339,8 +393,10 @@ class ConnectionViewModel @Inject constructor(
         // Done
         _importConflict.value = ImportConflict.Idle
         pendingImport = emptyList()
-        _exportImportMessage.value = "Import done — $importInserted inserted, $importReplaced replaced, $importSkipped skipped"
+        val doneMsg = "Import done — $importInserted inserted, $importReplaced replaced, $importSkipped skipped"
+        _exportImportMessage.value = if (importNote != null) "$doneMsg (${importNote})" else doneMsg
         applyAll = null
+        importNote = null
     }
 
     fun onImportDecision(action: ConnectionRepository.ImportAction, applyToAllChecked: Boolean) {
