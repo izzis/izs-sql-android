@@ -130,6 +130,29 @@ fun ConnectionCard(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    if (profile.useSshTunnel && profile.sshHost != null) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VpnKey,
+                                contentDescription = "SSH Tunnel",
+                                tint = PermissionGranted,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "via ${profile.sshHost}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -145,15 +168,6 @@ fun ConnectionCard(
                                 imageVector = Icons.Default.Lock,
                                 contentDescription = "Read Only",
                                 tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-
-                        if (profile.useSshTunnel) {
-                            Icon(
-                                imageVector = Icons.Default.VpnKey,
-                                contentDescription = "SSH Tunnel",
-                                tint = PermissionGranted,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
