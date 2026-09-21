@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.FilledTonalButton
@@ -61,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
@@ -108,13 +112,20 @@ fun ConnectionEditorScreen(
     // Imported/custom colors outside the preset list survive edit+save untouched.
     var keepCustomColor by remember { mutableStateOf(existingProfile != null && initialColorIndex == -1) }
     var selectedColorIndex by remember { mutableIntStateOf(initialColorIndex.coerceAtLeast(0)) }
-    val customSwatch = remember(existingColorHex) {
+    var customHex by remember { mutableStateOf(existingColorHex) }
+    val customSwatch = remember(customHex) {
         try {
-            Color(android.graphics.Color.parseColor(existingColorHex))
+            Color(android.graphics.Color.parseColor(customHex))
         } catch (_: Exception) {
             null
         }
     }
+    var showColorPicker by remember { mutableStateOf(false) }
+    // Top bar live-previews the effective color: custom pick or selected preset.
+    // Title/icon ink adapts too — dark on light colors, white on dark ones.
+    val topBarColor = if (keepCustomColor && customSwatch != null) customSwatch
+    else ConnectionColors[selectedColorIndex]
+    val topBarContent = if (topBarColor.luminance() > 0.5f) Color(0xFF1C1B1F) else Color.White
 
     var useSshTunnel by remember { mutableStateOf(existingProfile?.useSshTunnel ?: false) }
     var sshHost by remember { mutableStateOf(existingProfile?.sshHost ?: "") }
@@ -142,7 +153,7 @@ fun ConnectionEditorScreen(
         existingProfile?.id ?: 0L,
         name, host, port.toIntOrNull() ?: 3306,
         database.ifBlank { null }, username, isReadonly,
-        if (keepCustomColor) existingColorHex
+        if (keepCustomColor) customHex
         else String.format("#%06X", 0xFFFFFF and ConnectionColors[selectedColorIndex].toArgb()),
         useSshTunnel, sshHost, sshPort.toIntOrNull() ?: 22,
         sshUsername, sshKeyPath, useSsl
@@ -162,7 +173,7 @@ fun ConnectionEditorScreen(
                             Text(
                                 text = "$username@$host:$port",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = Color.White.copy(alpha = 0.8f)
+                                color = topBarContent.copy(alpha = 0.8f)
                             )
                         }
                     }
@@ -173,9 +184,9 @@ fun ConnectionEditorScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ConnectionColors[selectedColorIndex],
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = topBarColor,
+                    titleContentColor = topBarContent,
+                    navigationIconContentColor = topBarContent
                 )
             )
         }
@@ -369,28 +380,46 @@ fun ConnectionEditorScreen(
                             }
                         }
                     }
-                    // Custom (e.g. imported) color: shown as-is so edit+save keeps it.
-                    if (keepCustomColor && customSwatch != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    // Custom slot: shows the active custom color, or "+" to pick one.
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .border(
+                                width = if (keepCustomColor) 3.dp else 1.dp,
+                                color = if (keepCustomColor) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.outline,
+                                shape = CircleShape
+                            )
+                            .clickable { showColorPicker = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (keepCustomColor && customSwatch != null) {
                             Canvas(modifier = Modifier.size(30.dp)) { drawCircle(color = customSwatch) }
                             Icon(
                                 Icons.Default.Check, contentDescription = null,
                                 tint = Color.White, modifier = Modifier.size(18.dp)
                             )
+                        } else {
+                            Icon(
+                                Icons.Default.Add, contentDescription = "Custom color",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
-                    Text(
-                        text = "Top bar follows this color",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
+            }
+            if (showColorPicker) {
+                CustomColorDialog(
+                    initial = customSwatch ?: ConnectionColors[0],
+                    onConfirm = { hex ->
+                        customHex = hex
+                        keepCustomColor = true
+                        showColorPicker = false
+                    },
+                    onDismiss = { showColorPicker = false }
+                )
             }
 
             // ---- DB test result ----
@@ -440,6 +469,77 @@ fun ConnectionEditorScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+}
+
+/** HSV visual picker: preview + hex + three sliders. Returns "#RRGGBB". */
+@Composable
+private fun CustomColorDialog(
+    initial: Color,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val startHsv = remember(initial) {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) }
+    }
+    var hue by remember(initial) { mutableStateOf(startHsv[0]) }
+    var saturation by remember(initial) { mutableStateOf(startHsv[1]) }
+    var brightness by remember(initial) { mutableStateOf(startHsv[2]) }
+    val picked = remember(hue, saturation, brightness) {
+        Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
+    }
+    val hex = remember(picked) { String.format("#%06X", 0xFFFFFF and picked.toArgb()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom color") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                    ) {
+                        drawCircle(color = picked)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        hex,
+                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                HsvSlider("Hue", hue, 0f, 360f, "%.0f°".format(hue)) { hue = it }
+                HsvSlider("Saturation", saturation, 0f, 1f, "%.0f%%".format(saturation * 100)) { saturation = it }
+                HsvSlider("Brightness", brightness, 0f, 1f, "%.0f%%".format(brightness * 100)) { brightness = it }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(hex) }) { Text("Use color") }
+        },
+        dismissButton = {
+            FilledTonalButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+/** Label + value row with a slider underneath. */
+@Composable
+private fun HsvSlider(
+    label: String,
+    value: Float,
+    min: Float,
+    max: Float,
+    display: String,
+    onChange: (Float) -> Unit
+) {
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+            Text(display, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = min..max)
     }
 }
 
