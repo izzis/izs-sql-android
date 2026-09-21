@@ -208,6 +208,7 @@ class ConnectionRepository @Inject constructor(
                     database = d.database,
                     username = d.username,
                     isReadonly = d.isReadonly,
+                    color = d.color,
                     useSshTunnel = d.useSshTunnel,
                     sshHost = d.sshHost,
                     sshPort = d.sshPort,

@@ -29,6 +29,10 @@ class DbeaverImportTest {
     private fun dataSourcesJson(): String = """
     {
       "folders": {},
+      "connection-types": {
+        "dev": {"name": "Development", "color": "214,250,207"},
+        "prod": {"name": "Production", "color": "250,207,207", "colorDark": "97,61,63"}
+      },
       "connections": {
         "mysql-abc": {
           "provider": "mysql", "driver": "mysql8", "name": "Prod DB",
@@ -49,7 +53,7 @@ class DbeaverImportTest {
         "mysql-ssh": {
           "provider": "mysql", "driver": "mysql8", "name": "SSH DB",
           "configuration": {
-            "host": "10.0.0.5", "port": "3306", "database": "x",
+            "host": "10.0.0.5", "port": "3306", "database": "x", "type": "dev", "color": "#00ff00",
             "handlers": {"ssh_tunnel": {"enabled": true, "save-password": true,
               "properties": {"host": "bastion.example.com", "port": 22, "user": "deploy", "authType": "PASSWORD"}}}
           }
@@ -150,8 +154,71 @@ class DbeaverImportTest {
     }
 
     @Test
-    fun rejectsGarbage() {
-        try {
+    fun resolvesColorsFromTypeAndOverride() {
+        val res = DbeaverImport.parse(dataSourcesJson().toByteArray(Charsets.UTF_8))
+        // "type": "dev" + connection-types dev "214,250,207" -> #D6FACF
+        assertEquals("#D6FACF", res.profiles.first { it.name == "Prod DB" }.color)
+        // Per-connection "color" override wins over the type color
+        assertEquals("#00FF00", res.profiles.first { it.name == "SSH DB" }.color)
+        // No type and no override -> default
+        assertEquals(DbeaverImport.DEFAULT_COLOR, res.profiles.first { it.name == "URL DB" }.color)
+    }
+
+    @Test
+    fun invalidColorsFallBackToDefault() {
+        val json = """
+        {
+          "connections": {
+            "bad-triplet": {
+              "provider": "mysql", "driver": "mysql8", "name": "Bad",
+              "configuration": {"host": "h1", "type": "nope", "color": "999,0,0"}
+            },
+            "bare-hex": {
+              "provider": "mysql", "driver": "mysql8", "name": "Bare",
+              "configuration": {"host": "h2", "color": "ff8800"}
+            },
+            "spaced-triplet": {
+              "provider": "mysql", "driver": "mysql8", "name": "Spaced",
+              "configuration": {"host": "h3", "color": " 16 , 32 , 48 "}
+            }
+          }
+        }
+        """.trimIndent()
+        val res = DbeaverImport.parse(json.toByteArray(Charsets.UTF_8))
+        assertEquals(DbeaverImport.DEFAULT_COLOR, res.profiles.first { it.name == "Bad" }.color)
+        assertEquals("#FF8800", res.profiles.first { it.name == "Bare" }.color)
+        assertEquals("#102030", res.profiles.first { it.name == "Spaced" }.color)
+    }
+
+    @Test
+    fun nearWhiteColorsFallBackToDefault() {
+        val json = """
+        {
+          "connection-types": {
+            "dev": {"name": "Development", "color": "255,255,255"}
+          },
+          "connections": {
+            "white-type": {
+              "provider": "mysql", "driver": "mysql8", "name": "WhiteType",
+              "configuration": {"host": "h1", "type": "dev"}
+            },
+            "white-override": {
+              "provider": "mysql", "driver": "mysql8", "name": "WhiteOverride",
+              "configuration": {"host": "h2", "type": "dev", "color": "#FFFFFF"}
+            },
+            "near-white": {
+              "provider": "mysql", "driver": "mysql8", "name": "NearWhite",
+              "configuration": {"host": "h3", "color": "#FEFEFE"}
+            }
+          }
+        }
+        """.trimIndent()
+        val res = DbeaverImport.parse(json.toByteArray(Charsets.UTF_8))
+        assertTrue(res.profiles.all { it.color == DbeaverImport.DEFAULT_COLOR })
+    }
+
+    @Test
+    fun rejectsGarbage() {        try {
             DbeaverImport.parse("hello world".toByteArray())
             fail("must throw")
         } catch (e: IllegalArgumentException) {

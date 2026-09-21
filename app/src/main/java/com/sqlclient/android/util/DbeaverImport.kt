@@ -31,6 +31,12 @@ object DbeaverImport {
     private const val MAX_ENTRY_BYTES = 8 * 1024 * 1024
     private const val MAX_ZIP_ENTRIES_SCAN = 2000
 
+    /** Default profile color, matches ConnectionProfileEntity default. */
+    const val DEFAULT_COLOR = "#2196F3"
+
+    private val HEX_COLOR = Regex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+    private val RGB_TRIPLET = Regex("^(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})$")
+
     data class DbeaverProfile(
         val name: String,
         val host: String,
@@ -39,6 +45,8 @@ object DbeaverImport {
         val username: String,
         val password: String,
         val isReadonly: Boolean,
+        /** Resolved hex color ("#RRGGBB"); connection-types are NOT imported, only the color. */
+        val color: String,
         val useSshTunnel: Boolean,
         val sshHost: String?,
         val sshPort: Int,
@@ -218,6 +226,16 @@ object DbeaverImport {
 
     private fun parseDataSources(dataSources: JSONObject, creds: JSONObject?): ImportResult {
         val connections = dataSources.optJSONObject("connections") ?: return ImportResult(emptyList(), 0, 0, false)
+        // connection-types.<id>.color ("R,G,B" decimal triplet) — resolved to a plain
+        // hex color per connection; the type table itself is not imported.
+        val typeColors = mutableMapOf<String, String>()
+        dataSources.optJSONObject("connection-types")?.let { types ->
+            for (typeId in types.keys()) {
+                normalizeColor(types.optJSONObject(typeId)?.optString("color", "").orEmpty())?.let {
+                    typeColors[typeId] = it
+                }
+            }
+        }
         val profiles = mutableListOf<DbeaverProfile>()
         var skippedNonMysql = 0
         var skippedInvalid = 0
@@ -282,6 +300,10 @@ object DbeaverImport {
             val name = conn.optString("name", "").ifBlank {
                 if (username.isNotBlank()) "$username@$host" else host
             }
+            // Per-connection color override wins, else connection-type color, else default.
+            val color = normalizeColor(cfg.optString("color", ""))
+                ?: typeColors[cfg.optString("type", "")]
+                ?: DEFAULT_COLOR
             profiles.add(
                 DbeaverProfile(
                     name = name,
@@ -291,6 +313,7 @@ object DbeaverImport {
                     username = username,
                     password = password,
                     isReadonly = conn.optBoolean("read-only", false),
+                    color = color,
                     useSshTunnel = sshEnabled && sshHost.isNotBlank(),
                     sshHost = sshHost.takeIf { it.isNotBlank() },
                     sshPort = sshProps?.optString("port", "").orEmpty().toIntOrNull() ?: 22,
@@ -302,9 +325,39 @@ object DbeaverImport {
         return ImportResult(profiles, skippedNonMysql, skippedInvalid, false)
     }
 
-    private data class JdbcParts(val host: String, val port: Int?, val database: String?)
+    private data class JdbcParts(val host: String, val port: Int?, val database: String?)    private val JDBC_URL = Regex("^jdbc:(?:mysql|mariadb)://([^/:?]+)(?::(\\d+))?/?([^?]*)?", RegexOption.IGNORE_CASE)
 
-    private val JDBC_URL = Regex("^jdbc:(?:mysql|mariadb)://([^/:?]+)(?::(\\d+))?/?([^?]*)?", RegexOption.IGNORE_CASE)
+    /**
+     * Normalize a DBeaver color to "#RRGGBB"/"#AARRGGBB". Accepts DBeaver's native
+     * "R,G,B" decimal-triplet format (used by connection-types) and hex with or
+     * without "#" prefix. Returns null when unparseable or near-white (DBeaver
+     * light colors are background tints; white carries no signal as a badge and
+     * would hide the white badge icon) — caller falls back to default.
+     */
+    private fun normalizeColor(raw: String): String? {
+        val s = raw.trim()
+        if (s.isEmpty()) return null
+        val hex = if (s.startsWith("#")) s else "#$s"
+        if (HEX_COLOR.matches(hex)) {
+            val rgb = hex.removePrefix("#")
+            val o = if (rgb.length == 8) 2 else 0 // skip alpha in #AARRGGBB
+            val r = rgb.substring(o, o + 2).toInt(16)
+            val g = rgb.substring(o + 2, o + 4).toInt(16)
+            val b = rgb.substring(o + 4, o + 6).toInt(16)
+            if (isNearWhite(r, g, b)) return null
+            return hex.uppercase()
+        }
+        val m = RGB_TRIPLET.matchEntire(s) ?: return null
+        val (r, g, b) = m.destructured
+        val ri = r.toInt()
+        val gi = g.toInt()
+        val bi = b.toInt()
+        if (ri > 255 || gi > 255 || bi > 255) return null
+        if (isNearWhite(ri, gi, bi)) return null
+        return "#%02X%02X%02X".format(ri, gi, bi)
+    }
+
+    private fun isNearWhite(r: Int, g: Int, b: Int): Boolean = r >= 250 && g >= 250 && b >= 250
 
     private fun parseJdbcUrl(url: String): JdbcParts? {
         val m = JDBC_URL.find(url.trim()) ?: return null
