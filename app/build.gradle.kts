@@ -17,11 +17,11 @@ kotlin {
 }
 
 android {
-    namespace = "com.sqlclient.android"
+    namespace = "id.web.izs.sqlclient"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.sqlclient.android"
+        applicationId = "id.web.izs.sqlclient"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

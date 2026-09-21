@@ -1,4 +1,4 @@
-# SQL Client — Android
+# izs SQL — Android
 
 Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run queries, edit data inline, manage users/privileges, and work through an **SSH tunnel**. Built with **Kotlin + Jetpack Compose (Material 3)**.
 
@@ -30,7 +30,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 ## Features
 
-- **Connection management** — create/edit/delete profiles, colored badges, read-only default per connection, `enableEdgeToEdge` UI.
+- **Connection management** — create/edit/delete profiles, colored badges (MySQL vendor glyph from Simple Icons, CC0), read-only default per connection, `enableEdgeToEdge` UI.
 - **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 (`org.mariadb.jdbc:mariadb-java-client:2.4.4`) + JSch (`com.github.mwiede:jsch:2.28.7`) for `host:22` tunnelling (password or key + passphrase, `StrictHostKeyChecking=no`).
 - **Database browser** — sidebar (`AppSidebar`/`DatabaseTree`) + main panel; database/table lists are **privilege-filtered** via `PrivilegeResolver` (`PrivilegeSet`), manual refresh, `windowInsets` cache.
 - **Table inspection** — `SHOW TABLES` / `SHOW FULL COLUMNS FROM db.table` lazy-loaded on expand (columns/indexes), `SYSTEM_SCHEMAS` filtered out.
@@ -221,7 +221,7 @@ No `.env`: DB/SSH passwords are stored per profile via `CredentialStore` (Androi
 │   ├── proguard-rules.pro
 │   └── src/main/
 │       ├── AndroidManifest.xml
-│       ├── java/com/sqlclient/android/
+│       ├── java/id/web/izs/sqlclient/
 │       │   ├── App.kt                          # @HiltAndroidApp
 │       │   ├── MainActivity.kt                 # enableEdgeToEdge() + theme + NavGraph host
 │       │   ├── data/
@@ -434,7 +434,7 @@ Connection cards + `AppTopBar` use per-profile `ConnectionColors` (tinted badge 
 
 # Run on device/emulator with live code changes via Android Studio's Apply Changes
 # or CLI:
-./gradlew installDebug && adb shell am start -n com.sqlclient.android/.MainActivity
+./gradlew installDebug && adb shell am start -n id.web.izs.sqlclient/.MainActivity
 
 # Logs (DB/SSH categories)
 adb logcat -s MariaDbConn SshTunnelManager CredentialStore
