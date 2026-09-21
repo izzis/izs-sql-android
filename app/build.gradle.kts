@@ -1,3 +1,4 @@
+import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -16,6 +17,24 @@ kotlin {
     }
 }
 
+// Release signing inputs, resolved once at configuration time (file scope —
+// NOT inside android{}: the Android DSL receiver shadows plain `java.*`
+// references and breaks script compilation).
+// keystore.properties is generated in CI from GitHub Secrets and never
+// committed; local builds without the file still work (release APK is then
+// left unsigned instead of failing the build).
+val keystoreProps = Properties()
+val keystorePropsFile = rootProject.file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    FileInputStream(keystorePropsFile).use { stream -> keystoreProps.load(stream) }
+}
+// Optional overrides from CI: -PversionNameOverride=1.2.3 (tag v1.2.3
+// stripped of the leading 'v'), -PversionCodeOverride=5.
+val versionNameOverride = (findProperty("versionNameOverride") as String?)
+    ?.takeIf { it.isNotBlank() }
+val versionCodeOverride = (findProperty("versionCodeOverride") as String?)
+    ?.toIntOrNull()
+
 android {
     namespace = "id.web.izs.sqlclient"
     compileSdk = 37
@@ -24,8 +43,8 @@ android {
         applicationId = "id.web.izs.sqlclient"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = versionCodeOverride ?: 1
+        versionName = versionNameOverride ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -33,41 +52,35 @@ android {
         }
     }
 
-    // Release signing: keystore lives OUTSIDE the repo (~/.keystore/),
-    // passwords in gitignored local.properties (release.storePassword /
-    // release.keyPassword) or env SQL_RELEASE_STORE_PASSWORD /
-    // SQL_RELEASE_KEY_PASSWORD. Without them the APK stays unsigned.
-    val localProps = Properties()
-    val localPropsFile = rootProject.file("local.properties")
-    if (localPropsFile.exists()) {
-        localPropsFile.inputStream().use { localProps.load(it) }
-    }
-    val releaseStorePassword =
-        localProps.getProperty("release.storePassword") ?: System.getenv("SQL_RELEASE_STORE_PASSWORD")
-    val releaseKeyPassword =
-        localProps.getProperty("release.keyPassword") ?: System.getenv("SQL_RELEASE_KEY_PASSWORD")
-        ?: releaseStorePassword
-
     signingConfigs {
         create("release") {
-            storeFile = file(System.getProperty("user.home") + "/.keystore/sql-client-release.jks")
-            storePassword = releaseStorePassword
-            keyAlias = "sqlclient"
-            keyPassword = releaseKeyPassword
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile = rootProject.file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
         }
     }
 
     buildTypes {
         release {
+            // Signed in CI (keystore.properties present). Locally without the
+            // file the config has no credentials — Gradle leaves the APK
+            // unsigned instead of failing the build.
+            if (keystoreProps.containsKey("storeFile")) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
+            isShrinkResources = true
             isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (!releaseStorePassword.isNullOrBlank()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
 
