@@ -28,11 +28,18 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
@@ -62,7 +69,7 @@ fun ConnectionCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -95,37 +102,83 @@ fun ConnectionCard(
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = profile.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (profile.isReadonly) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Read Only",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Text(
+                            text = profile.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    // user@host on one line (Unix convention, same as DBeaver/SSH).
+                    // If it overflows, the @ is dropped: username above,
+                    // host below, each-capable truncated on its own line.
+                    var userHostOverflowed by remember(profile.id) { mutableStateOf(false) }
+                    if (!userHostOverflowed) {
                         Text(
-                            text = "${profile.host}:${profile.port}",
+                            text = buildAnnotatedString {
+                                if (profile.username.isBlank()) {
+                                    append("${profile.host}:${profile.port}")
+                                } else {
+                                    append("${profile.username}@${profile.host}:${profile.port}")
+                                }
+                                if (profile.database != null) {
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                                        append("/${profile.database}")
+                                    }
+                                }
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { result ->
+                                if (result.hasVisualOverflow) userHostOverflowed = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
-
-                        if (profile.database != null) {
+                    } else {
+                        if (profile.username.isNotBlank()) {
                             Text(
-                                text = "/${profile.database}",
+                                text = profile.username,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
+                        Text(
+                            text = buildAnnotatedString {
+                                append("${profile.host}:${profile.port}")
+                                if (profile.database != null) {
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                                        append("/${profile.database}")
+                                    }
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -152,30 +205,15 @@ fun ConnectionCard(
 
                         Spacer(modifier = Modifier.height(4.dp))
                     }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = profile.username,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (profile.isReadonly) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Read Only",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
                 }
 
                 if (!isConnecting) {
-                    IconButton(onClick = onEdit) {
+                    // Compact 40.dp targets: icon-to-icon and icon-to-edge gaps
+                    // mirror the 16.dp badge-to-edge distance on the left.
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(40.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit",
@@ -183,7 +221,10 @@ fun ConnectionCard(
                         )
                     }
 
-                    IconButton(onClick = onDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(40.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete",
