@@ -34,6 +34,21 @@ object DbeaverImport {
     /** Default profile color, matches ConnectionProfileEntity default. */
     const val DEFAULT_COLOR = "#2196F3"
 
+    /**
+     * DBeaver stock connection-type colors (DBPConnectionType.SYSTEM_TYPES:
+     * dev "255,255,255", test "214,250,207", prod "250,207,207") map to app
+     * preset badge colors instead of the raw tints — the pale DBeaver tints
+     * wash out the white badge icon. Anything else (a customized type color
+     * or a per-connection override) passes through untouched.
+     */
+    private data class StockPreset(val stock: String, val preset: String)
+
+    private val STANDARD_TYPE_PRESETS = mapOf(
+        "dev" to StockPreset("#FFFFFF", "#5C6BC0"),
+        "test" to StockPreset("#D6FACF", "#66BB6A"),
+        "prod" to StockPreset("#FACFCF", "#EF5350")
+    )
+
     private val HEX_COLOR = Regex("^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
     private val RGB_TRIPLET = Regex("^(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})$")
 
@@ -301,9 +316,13 @@ object DbeaverImport {
                 if (username.isNotBlank()) "$username@$host" else host
             }
             // Per-connection color override wins, else connection-type color, else default.
-            val color = normalizeColor(cfg.optString("color", ""))
-                ?: typeColors[cfg.optString("type", "")]
-                ?: DEFAULT_COLOR
+            // Stock dev/test/prod colors collapse to app presets (custom colors pass through).
+            val typeId = cfg.optString("type", "")
+            val color = resolveProfileColor(
+                typeId,
+                normalizeColor(cfg.optString("color", "")),
+                typeColors[typeId]
+            )
             profiles.add(
                 DbeaverProfile(
                     name = name,
@@ -323,6 +342,19 @@ object DbeaverImport {
             )
         }
         return ImportResult(profiles, skippedNonMysql, skippedInvalid, false)
+    }
+
+    /**
+     * Stock dev/test/prod colors become app presets; customized colors survive.
+     * A known standard type with no color info at all also yields its preset —
+     * a connection typed "test" is a test environment even without metadata.
+     */
+    private fun resolveProfileColor(typeId: String, override: String?, fromType: String?): String {
+        val std = STANDARD_TYPE_PRESETS[typeId.lowercase()]
+        if (std == null) return override ?: fromType ?: DEFAULT_COLOR
+        if (override != null && !override.equals(std.stock, ignoreCase = true)) return override
+        if (fromType != null && !fromType.equals(std.stock, ignoreCase = true)) return fromType
+        return std.preset
     }
 
     private data class JdbcParts(val host: String, val port: Int?, val database: String?)    private val JDBC_URL = Regex("^jdbc:(?:mysql|mariadb)://([^/:?]+)(?::(\\d+))?/?([^?]*)?", RegexOption.IGNORE_CASE)

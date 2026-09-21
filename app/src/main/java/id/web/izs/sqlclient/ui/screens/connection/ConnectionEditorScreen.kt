@@ -61,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -95,14 +96,25 @@ fun ConnectionEditorScreen(
         existingProfile?.id?.let { viewModel.hasStoredPassword(it) } ?: false
     }
 
+    val existingColorHex = existingProfile?.color ?: "#2196F3"
     val initialColorIndex = remember {
-        val color = existingProfile?.color ?: "#2196F3"
-        ConnectionColors.indexOfFirst { c ->
-            val hex = String.format("#%06X", 0xFFFFFF and c.hashCode())
-            hex.equals(color, ignoreCase = true)
-        }.coerceAtLeast(0)
+        // New profiles start on the first preset; existing ones resolve to
+        // their preset slot. NOTE: Color.hashCode() is NOT the ARGB value —
+        // compare via toArgb() or every edit silently resets to preset 0.
+        if (existingProfile == null) 0 else ConnectionColors.indexOfFirst { c ->
+            String.format("#%06X", 0xFFFFFF and c.toArgb()).equals(existingColorHex, ignoreCase = true)
+        }
     }
-    var selectedColorIndex by remember { mutableIntStateOf(initialColorIndex) }
+    // Imported/custom colors outside the preset list survive edit+save untouched.
+    var keepCustomColor by remember { mutableStateOf(existingProfile != null && initialColorIndex == -1) }
+    var selectedColorIndex by remember { mutableIntStateOf(initialColorIndex.coerceAtLeast(0)) }
+    val customSwatch = remember(existingColorHex) {
+        try {
+            Color(android.graphics.Color.parseColor(existingColorHex))
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     var useSshTunnel by remember { mutableStateOf(existingProfile?.useSshTunnel ?: false) }
     var sshHost by remember { mutableStateOf(existingProfile?.sshHost ?: "") }
@@ -130,7 +142,8 @@ fun ConnectionEditorScreen(
         existingProfile?.id ?: 0L,
         name, host, port.toIntOrNull() ?: 3306,
         database.ifBlank { null }, username, isReadonly,
-        String.format("#%06X", 0xFFFFFF and ConnectionColors[selectedColorIndex].hashCode()),
+        if (keepCustomColor) existingColorHex
+        else String.format("#%06X", 0xFFFFFF and ConnectionColors[selectedColorIndex].toArgb()),
         useSshTunnel, sshHost, sshPort.toIntOrNull() ?: 22,
         sshUsername, sshKeyPath, useSsl
     )
@@ -334,7 +347,7 @@ fun ConnectionEditorScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ConnectionColors.take(5).forEachIndexed { index, color ->
-                        val isSelected = selectedColorIndex == index
+                        val isSelected = !keepCustomColor && selectedColorIndex == index
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
@@ -344,7 +357,7 @@ fun ConnectionEditorScreen(
                                     color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
                                     shape = CircleShape
                                 )
-                                .clickable { selectedColorIndex = index },
+                                .clickable { selectedColorIndex = index; keepCustomColor = false },
                             contentAlignment = Alignment.Center
                         ) {
                             Canvas(modifier = Modifier.size(30.dp)) { drawCircle(color = color) }
@@ -354,6 +367,22 @@ fun ConnectionEditorScreen(
                                     tint = Color.White, modifier = Modifier.size(18.dp)
                                 )
                             }
+                        }
+                    }
+                    // Custom (e.g. imported) color: shown as-is so edit+save keeps it.
+                    if (keepCustomColor && customSwatch != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.size(30.dp)) { drawCircle(color = customSwatch) }
+                            Icon(
+                                Icons.Default.Check, contentDescription = null,
+                                tint = Color.White, modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                     Text(

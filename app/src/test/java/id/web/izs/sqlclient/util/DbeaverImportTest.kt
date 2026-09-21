@@ -165,6 +165,51 @@ class DbeaverImportTest {
     }
 
     @Test
+    fun stockTypeColorsBecomePresets() {
+        // DBeaver SYSTEM_TYPES stock colors collapse to app preset badges
+        // (raw tints would wash out the white badge icon).
+        val json = """
+        {
+          "connection-types": {
+            "dev": {"name": "Development", "color": "255,255,255"},
+            "test": {"name": "Test", "color": "214,250,207"},
+            "prod": {"name": "Production", "color": "250,207,207"}
+          },
+          "connections": {
+            "d": {"provider": "mysql", "name": "Dev", "configuration": {"host": "h1", "type": "dev"}},
+            "t": {"provider": "mysql", "name": "Test", "configuration": {"host": "h2", "type": "test"}},
+            "p": {"provider": "mysql", "name": "Prod", "configuration": {"host": "h3", "type": "prod"}}
+          }
+        }
+        """.trimIndent()
+        val res = DbeaverImport.parse(json.toByteArray(Charsets.UTF_8))
+        assertEquals("#5C6BC0", res.profiles.first { it.name == "Dev" }.color)
+        assertEquals("#66BB6A", res.profiles.first { it.name == "Test" }.color)
+        assertEquals("#EF5350", res.profiles.first { it.name == "Prod" }.color)
+    }
+
+    @Test
+    fun customColorsPassThrough() {
+        // A customized type color or an explicit override is kept verbatim.
+        val json = """
+        {
+          "connection-types": {
+            "test": {"name": "Test", "color": "128,0,128"}
+          },
+          "connections": {
+            "custom-type": {"provider": "mysql", "name": "CustomType",
+              "configuration": {"host": "h1", "type": "test"}},
+            "custom-override": {"provider": "mysql", "name": "CustomOverride",
+              "configuration": {"host": "h2", "type": "prod", "color": "#123456"}}
+          }
+        }
+        """.trimIndent()
+        val res = DbeaverImport.parse(json.toByteArray(Charsets.UTF_8))
+        assertEquals("#800080", res.profiles.first { it.name == "CustomType" }.color)
+        assertEquals("#123456", res.profiles.first { it.name == "CustomOverride" }.color)
+    }
+
+    @Test
     fun invalidColorsFallBackToDefault() {
         val json = """
         {
@@ -191,7 +236,9 @@ class DbeaverImportTest {
     }
 
     @Test
-    fun nearWhiteColorsFallBackToDefault() {
+    fun nearWhiteColorsWithoutTypeFallBackToDefault() {
+        // Stock dev white resolves to the dev preset; a near-white color with
+        // no standard type behind it still falls back to default.
         val json = """
         {
           "connection-types": {
@@ -214,7 +261,9 @@ class DbeaverImportTest {
         }
         """.trimIndent()
         val res = DbeaverImport.parse(json.toByteArray(Charsets.UTF_8))
-        assertTrue(res.profiles.all { it.color == DbeaverImport.DEFAULT_COLOR })
+        assertEquals("#5C6BC0", res.profiles.first { it.name == "WhiteType" }.color)
+        assertEquals("#5C6BC0", res.profiles.first { it.name == "WhiteOverride" }.color)
+        assertEquals(DbeaverImport.DEFAULT_COLOR, res.profiles.first { it.name == "NearWhite" }.color)
     }
 
     @Test
