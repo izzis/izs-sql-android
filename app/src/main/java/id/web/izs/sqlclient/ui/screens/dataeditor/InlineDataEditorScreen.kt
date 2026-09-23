@@ -293,7 +293,7 @@ fun InlineDataEditorScreen(
                     if (viewModel.isWriteQuery()) {
                         showWriteConfirm = true
                     } else {
-                        viewModel.executeCustomQuery()
+                        viewModel.executeCustomQuery(isLocked = isLocked)
                     }
                 },
                 isExpanded = showSQLEditor,
@@ -608,7 +608,7 @@ fun InlineDataEditorScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showWriteConfirm = false; viewModel.executeCustomQuery() }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { showWriteConfirm = false; viewModel.executeCustomQuery(isLocked = isLocked) }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showWriteConfirm = false }) { Text("Cancel") } }
         )

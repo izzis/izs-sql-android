@@ -1,8 +1,17 @@
 package id.web.izs.sqlclient.util
 
 object SqlUtil {
-    private val WRITE_PREFIXES = listOf(
-        "INSERT", "UPDATE", "DELETE", "ALTER", "DROP", "CREATE", "TRUNCATE", "RENAME", "GRANT", "REVOKE"
+    /**
+     * Known-safe READ statement prefixes. Everything else is conservatively
+     * treated as WRITE (default-deny) so an unknown/dangerous statement always
+     * requires the Confirm Write dialog instead of executing silently.
+     *
+     * FLUSH is deliberately NOT a write: it is the safest write-like statement
+     * (no data/schema change, only reloads privileges/caches) and the app
+     * auto-fires "FLUSH PRIVILEGES" after GRANT/user ops by design.
+     */
+    private val READ_PREFIXES = listOf(
+        "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH", "USE", "HELP", "VALUES", "TABLE"
     )
 
     /**
@@ -40,19 +49,29 @@ object SqlUtil {
             val s = stripLeading(raw).trim()
             if (s.isEmpty()) continue
             val up = s.uppercase()
-            for (prefix in WRITE_PREFIXES) {
-                if (up == prefix) return true
-                if (up.startsWith(prefix + " ") || up.startsWith(prefix + "(") || up.startsWith(prefix + "\n") || up.startsWith(prefix + "\t")) {
-                    return true
-                }
-                if (up.startsWith(prefix)) {
-                    if (up.length == prefix.length) return true
-                    val next = up[prefix.length]
-                    if (!next.isLetterOrDigit() && next != '_') return true
-                }
+            // FLUSH is explicitly safe (see above) — never a write, even typed manually.
+            if (hasPrefixWord(up, "FLUSH")) continue
+            var matchedRead: String? = null
+            for (prefix in READ_PREFIXES) {
+                if (hasPrefixWord(up, prefix)) { matchedRead = prefix; break }
+            }
+            if (matchedRead == null) return true // default-deny: unknown statement = write
+            if (matchedRead == "SELECT" || matchedRead == "WITH" || matchedRead == "TABLE" || matchedRead == "VALUES") {
+                // SELECT with side effects is still a write (and must not get auto-LIMIT).
+                if (up.contains("INTO OUTFILE") || up.contains("INTO DUMPFILE")) return true
+                if (up.contains("FOR UPDATE") || up.contains("LOCK IN SHARE MODE")) return true
             }
         }
         return false
+    }
+
+    /** Prefix match on a word boundary (handles "SELECT ", "SELECT(", "SELECT\n", "SELECT;" etc). */
+    private fun hasPrefixWord(up: String, prefix: String): Boolean {
+        if (up == prefix) return true
+        if (!up.startsWith(prefix)) return false
+        if (up.length == prefix.length) return true
+        val next = up[prefix.length]
+        return !next.isLetterOrDigit() && next != '_'
     }
 
     /**

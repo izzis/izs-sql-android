@@ -493,9 +493,10 @@ class DataEditorViewModel @Inject constructor(
         return SqlUtil.buildLimitedSql(sql, _dataLimit.value)
     }
 
-    fun executeCustomQuery() {
+    fun executeCustomQuery(isLocked: Boolean = false) {
         val sql = _query.value.trim()
         if (sql.isBlank()) return
+        if (isLocked && SqlUtil.isWriteQuery(sql)) { _error.value = "Locked — unlock to write"; return }
 
         currentOffset = 0
         _selectedRows.value = emptySet()

@@ -63,12 +63,42 @@ class SqlUtilTest {
     }
 
     @Test fun isWriteQuery_wordBoundary() {
-        // INSERTINTO is not a write (no boundary) - but INSERT INTO is
-        assertFalse(SqlUtil.isWriteQuery("INSERTINTO t VALUES (1)"))
-        assertFalse(SqlUtil.isWriteQuery("UPDATEX t SET x=1"))
+        // Default-deny: unknown statement is a write (safe side) — even without
+        // word boundary, e.g. typos like INSERTINTO must confirm, not run silently.
+        assertTrue(SqlUtil.isWriteQuery("INSERTINTO t VALUES (1)"))
+        assertTrue(SqlUtil.isWriteQuery("UPDATEX t SET x=1"))
         // with non-alnum after prefix counts as write: INSERT;  INSERT-
         assertTrue(SqlUtil.isWriteQuery("INSERT;"))
         assertTrue(SqlUtil.isWriteQuery("DROP;"))
+    }
+
+    @Test fun isWriteQuery_defaultDenyUnknownIsWrite() {
+        assertTrue(SqlUtil.isWriteQuery("REPLACE INTO t VALUES (1)"))
+        assertTrue(SqlUtil.isWriteQuery("CALL proc()"))
+        assertTrue(SqlUtil.isWriteQuery("DO 1"))
+        assertTrue(SqlUtil.isWriteQuery("SET GLOBAL max_connections = 100"))
+        assertTrue(SqlUtil.isWriteQuery("BEGIN"))
+        assertTrue(SqlUtil.isWriteQuery("COMMIT"))
+        assertTrue(SqlUtil.isWriteQuery("KILL 1"))
+        assertTrue(SqlUtil.isWriteQuery("LOAD DATA INFILE 'f' INTO TABLE t"))
+        assertTrue(SqlUtil.isWriteQuery("FOO BAR"))
+    }
+
+    @Test fun isWriteQuery_flushIsSafe() {
+        // FLUSH is deliberately NOT a write (safest write-like statement).
+        assertFalse(SqlUtil.isWriteQuery("FLUSH PRIVILEGES"))
+        assertFalse(SqlUtil.isWriteQuery("flush privileges"))
+        assertFalse(SqlUtil.isWriteQuery("SELECT 1; FLUSH PRIVILEGES"))
+    }
+
+    @Test fun isWriteQuery_selectSideEffectsAreWrite() {
+        assertTrue(SqlUtil.isWriteQuery("SELECT * FROM t INTO OUTFILE '/tmp/x'"))
+        assertTrue(SqlUtil.isWriteQuery("SELECT * FROM t FOR UPDATE"))
+        assertTrue(SqlUtil.isWriteQuery("SELECT * FROM t LOCK IN SHARE MODE"))
+        // plain SELECT stays read
+        assertFalse(SqlUtil.isWriteQuery("SELECT * FROM t"))
+        assertFalse(SqlUtil.isWriteQuery("WITH c AS (SELECT 1) SELECT * FROM c"))
+        assertFalse(SqlUtil.isWriteQuery("USE mydb"))
     }
 
     @Test fun isWriteQuery_commentsLeading() {
