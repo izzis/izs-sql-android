@@ -1,0 +1,38 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Same Lucide "database" glyph (ISC license) as ic_launcher_foreground,
+         but scaled to fill ~89% of the canvas (6..102 of 108) instead of ~52%.
+         For the in-app header on transparent background: the launcher version
+         keeps wide padding because the green tile fills it; here the padding
+         would just look like dead space. Launcher assets are NOT affected. -->
+    <group
+        android:translateX="6"
+        android:translateY="6"
+        android:scaleX="4.0"
+        android:scaleY="4.0">
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M4,5 a8,3 0 1,0 16,0 a8,3 0 1,0 -16,0" />
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+        <path
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" />
+    </group>
+</vector>

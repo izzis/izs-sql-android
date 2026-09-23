@@ -53,10 +53,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -166,28 +164,17 @@ fun ConnectionListScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Miniature of the izs-landing SQL tile: same diagonal
-                        // green gradient + same database glyph at the same
-                        // 52% glyph-to-box proportion. Gradient is Compose-drawn
-                        // (painterResource can't load <shape> drawables).
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFF00695C), Color(0xFF2E7D32)),
-                                        start = Offset.Zero,
-                                        end = Offset.Infinite
-                                    )
-                                )
-                        ) {
-                            Image(
-                                painter = painterResource(R.drawable.ic_launcher_foreground),
-                                contentDescription = null,
-                                modifier = Modifier.matchParentSize()
-                            )
-                        }
+                        // Database glyph on transparent, tinted with the theme
+                        // surface color so it stays visible in both light and
+                        // dark mode. Dedicated asset (glyph fills ~89% of the
+                        // canvas); the launcher foreground keeps its padding
+                        // for the green tile and is untouched.
+                        Image(
+                            painter = painterResource(R.drawable.ic_header_logo),
+                            contentDescription = null,
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier.size(32.dp)
+                        )
                         Text(
                             text = "izs SQL",
                             fontWeight = FontWeight.Bold

@@ -12,13 +12,13 @@ reinstall (losing local data).
 
 | # | Artifact | Location |
 |---|----------|----------|
-| 1 | Release keystore (`alias: sqlclient`) | `/home/al/.keystores/izs-sqlclient/release.jks` |
-| 2 | Keystore password | `/home/al/.keystores/izs-sqlclient/release.pw` and repo-root `keystore.properties` (gitignored) |
+| 1 | Release keystore (`alias: sqlclient`) | `/home/al/.keystore/sql-client-release.jks` |
+| 2 | Keystore password | `/home/al/.keystore/sql-client-release.pw` and repo-root `keystore.properties` (gitignored) |
 
 > Both are excluded from git (`.gitignore`: `*.jks`, `keystore.properties`).
 > Only the build wiring in `app/build.gradle.kts` is versioned — never the keys.
 
-Fingerprint (SHA-256): `7F:06:D9:1E:FF:64:A6:16:62:D4:93:EC:F7:12:2B:6B:44:17:CF:4F:96:0A:0C:11:64:93:D6:FE:42:50:2B:87`
+Fingerprint (SHA-256): `28:F9:21:4A:99:CE:81:4A:1C:58:3C:7C:B4:B4:0B:E2:30:AC:CF:18:69:9F:09:C3:16:97:0E:C2:3F:68:08:7E`
 
 ## Building a release APK locally
 
@@ -30,7 +30,7 @@ Fingerprint (SHA-256): `7F:06:D9:1E:FF:64:A6:16:62:D4:93:EC:F7:12:2B:6B:44:17:CF
 Requires repo-root `keystore.properties` (gitignored):
 
 ```properties
-storeFile=/home/al/.keystores/izs-sqlclient/release.jks
+storeFile=/home/al/.keystore/sql-client-release.jks
 storePassword=<password>
 keyAlias=sqlclient
 keyPassword=<password>
@@ -46,10 +46,10 @@ The keystore and its credentials are also stored as repo secrets
 
 | Secret | Value |
 |--------|-------|
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 /home/al/.keystores/izs-sqlclient/release.jks` |
-| `KEYSTORE_PASSWORD` | contents of `release.pw` |
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 /home/al/.keystore/sql-client-release.jks` |
+| `KEYSTORE_PASSWORD` | contents of `sql-client-release.pw` |
 | `KEY_ALIAS` | `sqlclient` |
-| `KEY_PASSWORD` | contents of `release.pw` |
+| `KEY_PASSWORD` | contents of `sql-client-release.pw` |
 
 ## Release via GitHub (manual only)
 
