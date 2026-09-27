@@ -10,10 +10,17 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Warnings fail the build (Kotlin + lint). Bypass for a one-off local run
+// without editing this file: ./gradlew <task> -PwarningsAsErrors=false
+// (CI never passes the flag, so the strict default stays enforced there).
+val strictWarnings = providers.gradleProperty("warningsAsErrors").map(String::toBoolean).getOrElse(true)
+
 // KGP 2.x style (kotlinOptions inside android{} is deprecated).
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        // Any Kotlin warning fails the build (main + unit-test sources).
+        allWarningsAsErrors.set(strictWarnings)
     }
 }
 
@@ -82,6 +89,13 @@ android {
         debug {
             isMinifyEnabled = false
         }
+    }
+
+    lint {
+        // Errors already abort (default); warnings must not creep back either.
+        warningsAsErrors = strictWarnings
+        // Exception: mariadb-java-client is locked at 2.4.4 (2.5.x broke on
+        // Android) — NewerVersionAvailable stays ignored in app/lint.xml.
     }
 
     compileOptions {

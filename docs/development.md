@@ -8,6 +8,10 @@
 # Lint/format (no enforced formatter — keep Compose idiomatic)
 ./gradlew lint
 
+# Warnings fail the build: Kotlin allWarningsAsErrors + lint warningsAsErrors
+# (app/build.gradle.kts). One-off bypass without editing any file:
+./gradlew lint -PwarningsAsErrors=false
+
 # Run on device/emulator with live code changes via Android Studio's Apply Changes
 # or CLI:
 ./gradlew installDebug && adb shell am start -n id.web.izs.sqlclient/.MainActivity
