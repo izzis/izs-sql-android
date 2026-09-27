@@ -189,6 +189,7 @@ fun InlineDataEditorScreen(
     }
 
     LaunchedEffect(database, table) {
+        viewModel.resetQueryLog()
         viewModel.loadData(database, table)
     }
 
@@ -273,7 +274,8 @@ fun InlineDataEditorScreen(
             CurrentQueryBar(
                 queries = currentQuery,
                 isExecuting = isExec,
-                onCancel = if (isExec) ({ viewModel.cancelCurrentQuery() }) else null
+                onCancel = if (isExec) ({ viewModel.cancelCurrentQuery() }) else null,
+                onClear = ({ viewModel.resetQueryLog() }).takeIf { !viewModel.hasPendingChanges() }
             )
         }
     ) { paddingValues ->

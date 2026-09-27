@@ -64,6 +64,11 @@ class QueryViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
     val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
 
+    /** Drops the whole log — page entry and the bar's clear button. Refresh keeps it. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     init {
         // Failures come straight from the connection manager and are attached to the
         // query-log line they belong to (CurrentQueryBar draws that line in red).
@@ -146,7 +151,7 @@ class QueryViewModel @Inject constructor(
     fun useDatabase(database: String) {
         _currentDatabase = database
         val sql = "USE `$database`"
-        _currentQuery.value = listOf(QueryLogEntry(sql))
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         viewModelScope.launch {
             try { connectionManager.executeQuery(sql) } catch (_: Exception) {}
         }
@@ -159,7 +164,7 @@ class QueryViewModel @Inject constructor(
         if (query.isBlank()) return
         if (isLocked && isWriteQuery()) { _queryResult.value = QueryResultState.Error("Locked \u2014 unlock to write"); return }
 
-        _currentQuery.value = listOf(QueryLogEntry(query))
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(query)
         currentQueryJob?.cancel()
         currentQueryJob = viewModelScope.launch {
             _isExecuting.value = true

@@ -122,6 +122,7 @@ fun DbStructureScreen(
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     LaunchedEffect(database) {
+        viewModel.resetQueryLog()
         viewModel.loadAll(database)
     }
 
@@ -161,7 +162,7 @@ fun DbStructureScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(queries = currentQuery) },
+        bottomBar = { CurrentQueryBar(queries = currentQuery, onClear = { viewModel.resetQueryLog() }) },
         floatingActionButton = {
             when (selectedTab) {
                 0 -> StructureFab("Create View") { if (!isLocked) showCreateView = true }

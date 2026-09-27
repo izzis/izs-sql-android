@@ -37,6 +37,11 @@ class TableStructureViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
     val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery
 
+    /** Drops the whole log — page entry and the bar's clear button. Refresh keeps it. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     init {
         // Failures come straight from the connection manager and are attached to the
         // query-log line they belong to (CurrentQueryBar draws that line in red).
@@ -48,7 +53,7 @@ class TableStructureViewModel @Inject constructor(
     }
 
     fun loadStructure(database: String, table: String) {
-        _currentQuery.value = listOf(QueryLogEntry("SHOW FULL COLUMNS FROM `$database`.`$table`"))
+        _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW FULL COLUMNS FROM `$database`.`$table`")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null

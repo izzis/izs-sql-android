@@ -133,6 +133,7 @@ fun TableStructureScreen(
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     LaunchedEffect(database, table) {
+        viewModel.resetQueryLog()
         viewModel.loadStructure(database, table)
         indexViewModel.resetQueryLog()
         indexViewModel.loadIndexes(database, table)
@@ -172,7 +173,6 @@ fun TableStructureScreen(
                 containerColor = topBarColor,
                 onRefresh = {
                     viewModel.loadStructure(database, table)
-                    indexViewModel.resetQueryLog()
                     indexViewModel.loadIndexes(database, table)
                 },
                 isRefreshing = isLoading || idxLoading,
@@ -186,7 +186,15 @@ fun TableStructureScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(queries = if (idxQuery.isNotEmpty()) idxQuery else currentQuery) },
+        bottomBar = {
+            CurrentQueryBar(
+                queries = if (idxQuery.isNotEmpty()) idxQuery else currentQuery,
+                onClear = {
+                    viewModel.resetQueryLog()
+                    indexViewModel.resetQueryLog()
+                }
+            )
+        },
         floatingActionButton = {
             if (selectedTab == 0) {
                 ExtendedFloatingActionButton(

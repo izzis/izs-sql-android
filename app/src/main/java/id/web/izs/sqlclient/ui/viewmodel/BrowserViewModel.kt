@@ -85,6 +85,11 @@ class BrowserViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
     val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery
 
+    /** Drops the whole log — page entry and the bar's clear button. Refresh keeps it. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     init {
         // Failures come straight from the connection manager and are attached to the
         // query-log line they belong to (CurrentQueryBar draws that line in red).
@@ -229,14 +234,18 @@ class BrowserViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
-                _currentQuery.value = listOf(QueryLogEntry("SHOW GRANTS FOR CURRENT_USER()"), QueryLogEntry("SHOW DATABASES"))
+                _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW DATABASES")
                 when (val result = connectionManager.executeQuery("SHOW DATABASES")) {
                     is QueryResult.Success -> {
                         val all = result.rows.map { DatabaseInfo(name = it[0].toString()) }
                         val filtered = all.filterNot { it.name.lowercase() in systemSchemas }
                         _databases.value = filtered
                         _hasLoadedDatabases.value = true
-                        // Try to load privileges (best-effort, no error spam)
+                        // Try to load privileges (best-effort, no error spam). The resolver only
+                        // reaches the server while its cache is cold — log the query it will run.
+                        if (force || privilegeResolver.getCached() == null) {
+                            _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW GRANTS")
+                        }
                         val grants = privilegeResolver.loadGrants(force = force)
                         _privilegeSet.value = grants
                         applyVisibleDatabases()
@@ -484,7 +493,6 @@ class BrowserViewModel @Inject constructor(
         _tables.value = emptyMap()
         _tableSizes.value = emptyMap()
         _hasLoadedDatabases.value = false
-        _currentQuery.value = emptyList()
         loadDatabases(force = true)
     }
 

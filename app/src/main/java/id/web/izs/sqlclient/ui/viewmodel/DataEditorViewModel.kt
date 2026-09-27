@@ -10,7 +10,10 @@ import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.CellDisplay
 import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.markExecuted
 import id.web.izs.sqlclient.util.withQueryError
+import id.web.izs.sqlclient.util.withStaged
+import id.web.izs.sqlclient.util.withoutStaged
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,6 +74,11 @@ class DataEditorViewModel @Inject constructor(
 
     private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
     val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
+
+    /** Drops the whole log — page entry and the bar's clear button. Refresh keeps it. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
 
     init {
         // Failures come straight from the connection manager and are attached to the
@@ -185,12 +193,11 @@ class DataEditorViewModel @Inject constructor(
     fun clearStaged() {
         _pendingEdits.value = emptyMap()
         _pendingDeletes.value = emptySet()
-        refreshCurrentQueryPreview()
+        _currentQuery.value = _currentQuery.value.withoutStaged()
     }
 
     private fun refreshCurrentQueryPreview() {
-        val sqls = buildPendingSqls(currentDatabase, currentTable)
-        _currentQuery.value = if (sqls.isNotEmpty()) sqls.map { QueryLogEntry(it) } else listOf(QueryLogEntry(_query.value))
+        _currentQuery.value = _currentQuery.value.withStaged(buildPendingSqls(currentDatabase, currentTable))
     }
 
     private fun formatWhere(pairs: List<Pair<String, Any?>>): String {
@@ -253,7 +260,7 @@ class DataEditorViewModel @Inject constructor(
             try {
                 val executed = mutableListOf<String>()
                 for (sql in sqls) {
-                    _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
+                    _currentQuery.value = _currentQuery.value.markExecuted(sql)
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
                         else -> executed.add(sql)
@@ -465,7 +472,7 @@ class DataEditorViewModel @Inject constructor(
 
         val sql = "SELECT * FROM $database.$table LIMIT ${_dataLimit.value}"
         _query.value = sql
-        _currentQuery.value = listOf(QueryLogEntry(sql))
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -520,7 +527,7 @@ class DataEditorViewModel @Inject constructor(
             val t0 = SystemClock.elapsedRealtime()
             try {
                 val limitedSql = SqlUtil.buildLimitedSql(sql, _dataLimit.value)
-                _currentQuery.value = listOf(QueryLogEntry(limitedSql))
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(limitedSql)
                 executeWithLimit(limitedSql)
             } catch (e: Exception) {
                 _error.value = "Query failed: ${e.message}"

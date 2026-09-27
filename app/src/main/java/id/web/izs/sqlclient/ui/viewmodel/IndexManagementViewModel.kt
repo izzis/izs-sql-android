@@ -49,7 +49,10 @@ class IndexManagementViewModel @Inject constructor(
         }
     }
 
-    /** Full page (re)entry — clears the query log. Loaders below only append. */
+    /**
+     * Drops the whole log — called on page entry and by the bar's clear button. Refresh keeps
+     * the log: a failed line must stay readable after a retry.
+     */
     fun resetQueryLog() {
         _currentQuery.value = emptyList()
     }

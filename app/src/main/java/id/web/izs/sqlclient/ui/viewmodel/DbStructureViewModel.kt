@@ -66,6 +66,11 @@ class DbStructureViewModel @Inject constructor(
     private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
     val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
 
+    /** Drops the whole log — page entry and the bar's clear button. Refresh keeps it. */
+    fun resetQueryLog() {
+        _currentQuery.value = emptyList()
+    }
+
     init {
         // Failures come straight from the connection manager and are attached to the
         // query-log line they belong to (CurrentQueryBar draws that line in red).

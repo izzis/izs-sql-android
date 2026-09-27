@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -38,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,18 +47,25 @@ import androidx.compose.ui.unit.dp
 import id.web.izs.sqlclient.util.QueryLogEntry
 import id.web.izs.sqlclient.util.rememberCopyToClipboard
 
+// Amber for staged (queued, not sent yet): hardcoded so it stays amber on dynamic palettes
+// and never collides with `error` red, which always means "the server rejected it".
+private val StagedAmber = Color(0xFFB26A00)
+
 @Composable
 fun CurrentQueryBar(
     queries: List<QueryLogEntry>,
     modifier: Modifier = Modifier,
     isExecuting: Boolean = false,
     onCancel: (() -> Unit)? = null,
+    onClear: (() -> Unit)? = null,
 ) {
     // show bar even when executing but no queries yet (e.g. immediate after execute)
     if (queries.isEmpty() && !isExecuting) return
     val lastEntry = queries.lastOrNull()
     val lastQuery = lastEntry?.sql ?: ""
     val lastFailed = lastEntry?.error != null
+    val lastStaged = lastEntry?.staged == true
+    val stagedCount = queries.count { it.staged }
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     val copyToClipboard = rememberCopyToClipboard()
@@ -87,9 +96,17 @@ fun CurrentQueryBar(
                         Text(
                             text = "Query log (${queries.size})",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (stagedCount > 0) {
+                            Text(
+                                text = "  ·  $stagedCount staged",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StagedAmber,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
                     } else if (isExecuting) {
                         Text(
                             text = "Current query  ·  executing ...",
@@ -106,10 +123,10 @@ fun CurrentQueryBar(
                         Text(
                             text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = if (lastFailed) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            color = when {
+                                lastFailed -> MaterialTheme.colorScheme.error
+                                lastStaged -> StagedAmber
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -125,6 +142,15 @@ fun CurrentQueryBar(
                             Text("Cancel", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         }
                     } else {
+                        if (onClear != null) {
+                            IconButton(
+                                onClick = onClear,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Clear query log", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                         IconButton(
                             onClick = {
                                 copyToClipboard(queries.joinToString(";\n") { it.sql }, "Copied")
@@ -163,7 +189,11 @@ fun CurrentQueryBar(
                                 Text(
                                     text = lastQuery,
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = if (lastFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    color = when {
+                                        lastFailed -> MaterialTheme.colorScheme.error
+                                        lastStaged -> StagedAmber
+                                        else -> MaterialTheme.colorScheme.primary
+                                    },
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -181,6 +211,7 @@ fun CurrentQueryBar(
                                 val sql = entry.sql
                                 val error = entry.error
                                 val failed = error != null
+                                val staged = entry.staged
 
                                 if (idx > 0) {
                                     HorizontalDivider(
@@ -199,10 +230,11 @@ fun CurrentQueryBar(
                                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                                         color = when {
                                             failed -> MaterialTheme.colorScheme.error
+                                            staged -> StagedAmber
                                             isLast -> MaterialTheme.colorScheme.primary
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         },
-                                        fontWeight = if (isLast || failed) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (isLast || failed || staged) FontWeight.Bold else FontWeight.Normal,
                                         modifier = Modifier.width(20.dp).padding(top = 2.dp)
                                     )
                                     SelectionContainer(modifier = Modifier.weight(1f)) {
@@ -212,11 +244,21 @@ fun CurrentQueryBar(
                                                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                                 color = when {
                                                     failed -> MaterialTheme.colorScheme.error
+                                                    staged -> StagedAmber
                                                     isLast -> MaterialTheme.colorScheme.primary
                                                     else -> MaterialTheme.colorScheme.onSurface
                                                 },
                                                 fontWeight = if (isLast) FontWeight.Medium else FontWeight.Normal
                                             )
+                                            if (staged) {
+                                                Text(
+                                                    text = "staged — not sent to the server",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = StagedAmber,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(top = 2.dp)
+                                                )
+                                            }
                                             if (error != null) {
                                                 Row(
                                                     modifier = Modifier.padding(top = 2.dp),

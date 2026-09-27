@@ -7,7 +7,10 @@ import id.web.izs.sqlclient.data.remote.QueryResult
 import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.data.remote.model.UserInfo
 import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.markExecuted
 import id.web.izs.sqlclient.util.withQueryError
+import id.web.izs.sqlclient.util.withStaged
+import id.web.izs.sqlclient.util.withoutStaged
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,12 +103,13 @@ class UserPermissionViewModel @Inject constructor(
             _pendingPrivChanges.value = _pendingPrivChanges.value + (key to wantChecked)
         }
         val sqls = buildPendingPrivSqls(user, host)
-        _currentQuery.value = if (sqls.isNotEmpty()) sqls.map { QueryLogEntry(it) } else listOf(QueryLogEntry("SHOW GRANTS FOR `$user`@`$host`"))
+        _currentQuery.value = _currentQuery.value.withStaged(sqls)
     }
 
     fun clearPendingPrivs(user: String, host: String) {
         _pendingPrivChanges.value = emptyMap()
-        // Discard executes no query — leave the query log untouched.
+        // Discard sends nothing: staged lines leave the query log, executed history stays.
+        _currentQuery.value = _currentQuery.value.withoutStaged()
     }
 
     fun commitPendingPrivs(user: String, host: String, isLocked: Boolean = false) {
@@ -117,7 +121,7 @@ class UserPermissionViewModel @Inject constructor(
             _error.value = null
             try {
                 for (sql in sqls) {
-                    _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
+                    _currentQuery.value = _currentQuery.value.markExecuted(sql)
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
                         else -> recordWrite(sql)
@@ -125,6 +129,7 @@ class UserPermissionViewModel @Inject constructor(
                 }
                 flushPrivileges()
                 _pendingPrivChanges.value = emptyMap()
+                _currentQuery.value = _currentQuery.value.withoutStaged()
                 loadGrants(user, host)
             } catch (e: Exception) {
                 _error.value = "Save failed: ${e.message}"
@@ -147,7 +152,10 @@ class UserPermissionViewModel @Inject constructor(
         }
     }
 
-    /** Full page (re)entry — clears the query log. Loaders below only append. */
+    /**
+     * Drops the whole log — called on page entry and by the bar's clear button. Refresh keeps
+     * the log: a failed line must stay readable after a retry.
+     */
     fun resetQueryLog() {
         _currentQuery.value = emptyList()
     }
@@ -155,7 +163,6 @@ class UserPermissionViewModel @Inject constructor(
     /** Manual refresh — cache-first. Call from TopBar Refresh. Back uses cached users. */
     fun refreshUsers() {
         _hasLoaded.value = false
-        resetQueryLog()
         loadUsers(force = true)
     }
 
@@ -164,7 +171,6 @@ class UserPermissionViewModel @Inject constructor(
      * the cached table lists (caller reloads the expanded one). Pending privilege edits stay.
      */
     fun refreshGrants(user: String, host: String) {
-        resetQueryLog()
         _dbTables.value = emptyMap()
         loadAllDatabases()
         loadGrants(user, host)

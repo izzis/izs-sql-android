@@ -126,6 +126,7 @@ fun ManageSavedQueriesScreen(
     }
 
     LaunchedEffect(Unit) {
+        queryViewModel.resetQueryLog()
         queryViewModel.loadAllFavorites(profile.id)
     }
 
@@ -205,7 +206,7 @@ fun ManageSavedQueriesScreen(
                 isReconnecting = isReconnecting
             )
         },
-        bottomBar = { CurrentQueryBar(queries = currentQuery) },
+        bottomBar = { CurrentQueryBar(queries = currentQuery, onClear = { queryViewModel.resetQueryLog() }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(

@@ -164,6 +164,12 @@ fun DatabaseBrowserScreen(
     // At browser root, consume system back so it doesn't pop to "connections" without explicit Disconnect
     BackHandler(enabled = !canGoBack && !drawerState.isOpen) { }
 
+    // Page entry — the bar shows what was sent since this screen opened; refresh appends.
+    LaunchedEffect(Unit) {
+        viewModel.resetQueryLog()
+        userViewModel.resetQueryLog()
+    }
+
     // Manual refresh only: first open if cache empty, otherwise use cache (back preserves cache)
     LaunchedEffect(hasLoadedDatabases) {
         if (!hasLoadedDatabases) viewModel.loadDatabases()
@@ -279,7 +285,14 @@ fun DatabaseBrowserScreen(
                     BrowserPanel.HISTORY -> emptyList<QueryLogEntry>()
                 }
 
-                CurrentQueryBar(queries = browserQuery)
+                CurrentQueryBar(
+                    queries = browserQuery,
+                    onClear = when (activePanel) {
+                        BrowserPanel.TABLE_INFO -> ({ viewModel.resetQueryLog() })
+                        BrowserPanel.USERS -> ({ userViewModel.resetQueryLog() })
+                        BrowserPanel.HISTORY -> null
+                    }
+                )
             }
         ) { paddingValues ->
             Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {

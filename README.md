@@ -26,7 +26,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Views / Triggers / Events / Routines** — per-database create/edit/drop + preview.
 - **Session lock vs profile default** — live lock toggle, wired to every route.
 - **Saved queries** — grouped by database, backup/restore JSON.
-- **Current query bar** — bottom query log; every query hitting the server is shown (matches `general_log`).
+- **Current query bar** — bottom query log; every query hitting the server is shown (matches `general_log`), queued-but-unsent statements show amber `staged`, cleared on page change (or its trash button), refresh keeps the history.
 - **Export** — CSV/etc. via `FileProvider`.
 - **Profile backup (encrypted)** — SAF `.enc` (`PBKDF2 120k + AES-256-CBC`), per-duplicate Replace/Skip/Insert.
 - **Import from DBeaver** — `.dbp` / `data-sources.json` (MySQL/MariaDB only).
@@ -53,7 +53,7 @@ Dari nol (install JDK/SDK): [docs/setup.md](docs/setup.md).
    - Workflow/test/troubleshoot — [docs/development.md](docs/development.md)
 2. **Prefer `Glob`/`Grep`** untuk discovery; peta struktur ada di [docs/architecture.md](docs/architecture.md#project-structure).
 3. **Write query safety**: semua write WAJIB preview + confirm dialog + lock gate di ViewModel. Klasifikasi `SqlUtil.isWriteQuery()` **default-deny** (`FLUSH` satu-satunya exception by-design). Refresh tidak boleh eksekusi write. Detail: [docs/write-safety.md](docs/write-safety.md).
-4. **Query log**: setiap query ke server harus di-append ke `_currentQuery` sebelum `executeQuery()` — no hidden queries. Query gagal → barisnya merah + pesan error dari server (verbatim) di bawah nomor log yang sama (`QueryLogEntry.error`, dari `connectionManager.queryFailures`).
+4. **Query log**: setiap query ke server harus di-append ke `_currentQuery` sebelum `executeQuery()` — no hidden queries. Query gagal → barisnya merah + pesan error dari server (verbatim) di bawah nomor log yang sama (`QueryLogEntry.error`, dari `connectionManager.queryFailures`). Query yang **staged** (belum dikirim) → baris amber + label `staged`, hilang saat Discard, berubah jadi normal saat dieksekusi. Log **clear hanya saat pindah halaman** / tombol clear di bar — refresh tidak menghapus log.
 5. **Jangan persist `sessionLocked`** — live state `ConnectionViewModel` saja.
 6. **Testing gate**: fitur query baru WAJIB tambah/update test (`SqlUtilTest`, 22 tests) dan jaga CI hijau.
 7. `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push butuh approval.

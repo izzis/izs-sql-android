@@ -29,7 +29,10 @@ Details:
 `FLUSH` is **deliberately not a write** — the safest write-like statement (no
 data/schema change, only reloads privileges/caches). The app auto-fires
 `FLUSH PRIVILEGES` after GRANT/user ops by design: no dialog, but still appended
-to the query log (`CurrentQueryBar`) to match `general_log`.
+to the query log (`CurrentQueryBar`) to match `general_log`. Staged statements
+(queued in the UI, not sent yet) are drawn **amber + "staged"** so they never
+pass for executed ones; they flip to a normal line when sent and leave the log
+when discarded.
 
 ## Mandatory rules
 

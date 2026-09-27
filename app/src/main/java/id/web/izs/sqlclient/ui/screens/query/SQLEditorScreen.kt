@@ -96,6 +96,7 @@ fun SQLEditorScreen(
     val activeTab = queryTabs.find { it.id == activeTabId }?.takeIf { it.database == database } ?: tabsForDb.firstOrNull()
 
     LaunchedEffect(profile.id) {
+        viewModel.resetQueryLog()
         viewModel.setCurrentProfileId(profile.id)
     }
 
@@ -203,10 +204,11 @@ fun SQLEditorScreen(
                 queries = if (currentQuery.isNotEmpty()) {
                     currentQuery
                 } else {
-                    listOfNotNull(activeTab?.query).map { QueryLogEntry(it) }
+                    listOfNotNull(activeTab?.query).map { QueryLogEntry(it, staged = true) }
                 },
                 isExecuting = isExecuting,
-                onCancel = { viewModel.cancelQuery() }
+                onCancel = { viewModel.cancelQuery() },
+                onClear = ({ viewModel.resetQueryLog() }).takeIf { currentQuery.isNotEmpty() }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }

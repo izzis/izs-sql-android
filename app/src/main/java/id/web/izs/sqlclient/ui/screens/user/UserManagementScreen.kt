@@ -106,6 +106,7 @@ fun UserManagementScreen(
     val currentQuery by viewModel.currentQuery.collectAsState()
 
     LaunchedEffect(Unit) {
+        viewModel.resetQueryLog()
         if (!viewModel.hasLoaded.value) viewModel.loadUsers()
         viewModel.loadAllDatabases()
     }
@@ -142,7 +143,7 @@ fun UserManagementScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = { CurrentQueryBar(queries = currentQuery) },
+        bottomBar = { CurrentQueryBar(queries = currentQuery, onClear = { viewModel.resetQueryLog() }) },
         floatingActionButton = {
             if (selectedTab == 0) {
                 ExtendedFloatingActionButton(
