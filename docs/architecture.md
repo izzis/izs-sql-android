@@ -42,7 +42,7 @@
 │       │   │   │   ├── dataeditor/InlineDataEditorScreen.kt
 │       │   │   │   ├── query/SQLEditorScreen.kt
 │       │   │   │   ├── table/TableStructureScreen.kt (index health box + cardinality via IndexAnalyzer)
-│       │   │   │   ├── user/UserManagementScreen.kt, UserPrivilegeDetailScreen.kt
+│       │   │   │   ├── user/UserPrivilegeDetailScreen.kt
 │       │   │   │   ├── export/, settings/
 │       │   │   │   └── …
 │       │   │   ├── theme/                      # Color.kt, Theme.kt, Type.kt, SqlClientTheme + ConnectionColors
@@ -110,7 +110,7 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 ### Current query bar
 
-`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `ManageSavedQueries`, `InlineDataEditor`, `TableStructure`, `DbStructure`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
+`CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `ManageSavedQueries`, `InlineDataEditor`, `TableStructure`, `DbStructure`, `UserPrivilegeDetailScreen`. Contract:
 
 - `currentQuery: List<QueryLogEntry>` — **every query sent to the server since this screen was entered** (`QueryLogEntry(sql, error, staged)` lives in `util/QueryLog.kt`). Every ViewModel appends (`+= QueryLogEntry(sql)`) each SQL **before** execution. The list is cleared **only on page entry** (the screen's entry `LaunchedEffect`, keyed by route + args) or by the bar's clear button (trash) — **refresh appends and never clears**, so a red failed line stays readable while you retry. Collapsed = "Query log (N)" pill (plus `· M staged` in amber); expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy + clear.
 - **Three line states** — *executed* (default), *failed* (red, verbatim driver/server error under the same log number — `QueryLogEntry.error`, filled from `MariaDbConnectionManager.queryFailures`, the message is never rewritten) and *staged* (amber + "staged — not sent to the server"): a statement queued UI-side only — pending cell edits, pending privilege toggles, the active editor tab. Managed by the pure helpers in `QueryLog.kt`: `withStaged(sqls)` swaps the staged lines (history untouched), `markExecuted(sql)` flips a staged line in place when it is sent (no duplicate after Save), `withoutStaged()` drops them on Discard.
@@ -145,8 +145,7 @@ Write-query rules (preview + confirm + lock) live in [write-safety.md](write-saf
 | `structure/{database}/{table}` | Table structure | `ui/screens/table/TableStructureScreen.kt` | Full columns/types/keys (add/drop/edit + position/auto-inc, PRI/UNI/MUL/AUTO flags) + index list (cardinality, auto health box, create/drop) |
 | `db_structure/{database}` | Database structure | `ui/screens/browser/DbStructureScreen.kt` + `DbStructureViewModel` + `DbStructureSql` | Views / Triggers / Events / Routines per database: lazy definitions, create/edit/drop + preview, DROP+CREATE for trigger/routine edit, event enable toggle |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
-| `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
-| `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix (staged toggles render red until saved), Rename/Password dialogs |
+| `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Opened from the Browser **Users panel** (list/create/delete live there). Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix (staged toggles render red until saved), Rename/Password dialogs |
 
 `NavGraph` holds the only `rememberNavController()` and owns the four shared VMs (`ConnectionViewModel`, `BrowserViewModel`, `QueryViewModel`) across destinations; the remaining VMs are `hiltViewModel()` per destination.
 

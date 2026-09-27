@@ -22,7 +22,6 @@ import id.web.izs.sqlclient.ui.screens.dataeditor.InlineDataEditorScreen
 import id.web.izs.sqlclient.ui.screens.query.ManageSavedQueriesScreen
 import id.web.izs.sqlclient.ui.screens.query.SQLEditorScreen
 import id.web.izs.sqlclient.ui.screens.table.TableStructureScreen
-import id.web.izs.sqlclient.ui.screens.user.UserManagementScreen
 import id.web.izs.sqlclient.ui.screens.user.UserPrivilegeDetailScreen
 import id.web.izs.sqlclient.ui.viewmodel.BrowserViewModel
 import id.web.izs.sqlclient.ui.viewmodel.ConnectionViewModel
@@ -274,21 +273,6 @@ fun NavGraph(themeManager: ThemeManager) {
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
                 )
             }
-        }
-
-        composable("users") {
-            val userPermissionViewModel: UserPermissionViewModel = hiltViewModel()
-
-            UserManagementScreen(
-                viewModel = userPermissionViewModel,
-                connectionViewModel = connectionViewModel,
-                isLocked = connectionViewModel.sessionLocked.collectAsState().value,
-                onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
-                onBack = { navController.popBackStack() },
-                onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, Charsets.UTF_8)}") },
-                onReconnect = { connectionViewModel.reconnect() },
-                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
-            )
         }
 
         composable(

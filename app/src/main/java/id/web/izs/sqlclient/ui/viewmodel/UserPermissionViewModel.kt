@@ -38,10 +38,6 @@ class UserPermissionViewModel @Inject constructor(
     private val _hasLoaded = MutableStateFlow(false)
     val hasLoaded: StateFlow<Boolean> = _hasLoaded
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery
-    fun setSearchQuery(q: String) { _searchQuery.value = q }
-
     private val _allDatabases = MutableStateFlow<List<String>>(emptyList())
     val allDatabases: StateFlow<List<String>> = _allDatabases
     private val _dbTables = MutableStateFlow<Map<String, List<String>>>(emptyMap())
@@ -230,61 +226,12 @@ class UserPermissionViewModel @Inject constructor(
         }
     }
 
-    fun grantPrivilege(user: String, host: String, privilege: String, database: String, table: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val sql = buildGrantSql(user, host, privilege, database, table)
-                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {
-                        recordWrite(sql)
-                        flushPrivileges()
-                        loadGrants(user, host)
-                        loadUsers()
-                    }
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to grant privilege: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun revokePrivilege(user: String, host: String, privilege: String, database: String, table: String, isLocked: Boolean = false) {
-        if (isLocked) { _error.value = "Locked \u2014 unlock to write"; return }
-        viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                val sql = buildRevokeSql(user, host, privilege, database, table)
-                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
-                when (val result = connectionManager.executeQuery(sql)) {
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {
-                        recordWrite(sql)
-                        flushPrivileges()
-                        loadGrants(user, host)
-                        loadUsers()
-                    }
-                }
-            } catch (e: Exception) {
-                _error.value = "Failed to revoke privilege: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
     private fun sqlTarget(database: String, table: String): String = when {
         database == "*" && table == "*" -> "*.*"
         table == "*" -> "`$database`.*"
         else -> "`$database`.`$table`"
     }
+
     fun buildGrantSql(user: String, host: String, privilege: String, database: String, table: String): String = "GRANT $privilege ON ${sqlTarget(database, table)} TO `$user`@`$host`"
     fun buildRevokeSql(user: String, host: String, privilege: String, database: String, table: String): String = "REVOKE $privilege ON ${sqlTarget(database, table)} FROM `$user`@`$host`"
     fun buildCreateUserSql(user: String, host: String, password: String): String = "CREATE USER `$user`@`$host` IDENTIFIED BY '${password.replace("'","''")}'"
@@ -383,7 +330,6 @@ class UserPermissionViewModel @Inject constructor(
 
     fun clearAll() {
         _hasLoaded.value = false
-        _searchQuery.value = ""
         _users.value = emptyList()
         _grants.value = emptyList()
         _isLoading.value = false
