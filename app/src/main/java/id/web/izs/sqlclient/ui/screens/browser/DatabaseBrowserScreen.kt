@@ -79,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.data.remote.model.UserInfo
 import id.web.izs.sqlclient.ui.components.AppSidebar
@@ -201,7 +202,7 @@ fun DatabaseBrowserScreen(
     LaunchedEffect(Unit) { queryViewModel.loadAllFavorites(profile.id) }
 
     val topBarColor = try {
-        Color(android.graphics.Color.parseColor(profile.color))
+        Color(profile.color.toColorInt())
     } catch (_: Exception) {
         MaterialTheme.colorScheme.primary
     }
@@ -779,9 +780,9 @@ private fun UsersPanel(
     users: List<UserInfo>,
     isLoading: Boolean,
     userViewModel: UserPermissionViewModel,
+    modifier: Modifier = Modifier,
     isLocked: Boolean = false,
-    onOpenUserDetail: (String, String) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    onOpenUserDetail: (String, String) -> Unit = { _, _ -> }
 ) {
     val listState = rememberLazyListState()
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -948,6 +949,7 @@ private fun HistoryPanel(
     val search by viewModel.historySearch.collectAsState()
     val copyToClipboard = rememberCopyToClipboard()
     var showClearConfirm by remember { mutableStateOf(false) }
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
 
     LaunchedEffect(profile.id) { viewModel.loadHistory(profile.id) }
 
@@ -996,7 +998,7 @@ private fun HistoryPanel(
             ) {
                 items(history, key = { it.id }) { item ->
                     val timeStr = try {
-                        val sdf = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault())
+                        val sdf = java.text.SimpleDateFormat("dd/MM HH:mm", locale)
                         sdf.format(java.util.Date(item.executedAt))
                     } catch (_: Exception) { "" }
                     Card(

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.ui.components.AppTopBar
 import id.web.izs.sqlclient.ui.components.CurrentQueryBar
@@ -118,7 +119,7 @@ fun SQLEditorScreen(
     }
 
     val topBarColor = try {
-        Color(android.graphics.Color.parseColor(profile.color))
+        Color(profile.color.toColorInt())
     } catch (_: Exception) {
         MaterialTheme.colorScheme.primary
     }

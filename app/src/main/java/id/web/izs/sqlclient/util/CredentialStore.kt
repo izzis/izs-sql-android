@@ -2,6 +2,7 @@ package id.web.izs.sqlclient.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.InvalidKeyException
 import javax.inject.Inject
@@ -47,7 +48,7 @@ class CredentialStore @Inject constructor(
     }
 
     fun savePassword(profileId: Long, password: String) {
-        prefs.edit().putString("password_$profileId", encryptValue(password)).apply()
+        prefs.edit { putString("password_$profileId", encryptValue(password)) }
     }
 
     fun getPassword(profileId: Long): String? {
@@ -55,11 +56,11 @@ class CredentialStore @Inject constructor(
     }
 
     fun deletePassword(profileId: Long) {
-        prefs.edit().remove("password_$profileId").apply()
+        prefs.edit { remove("password_$profileId") }
     }
 
     fun saveSshPassword(profileId: Long, password: String) {
-        prefs.edit().putString("ssh_password_$profileId", encryptValue(password)).apply()
+        prefs.edit { putString("ssh_password_$profileId", encryptValue(password)) }
     }
 
     fun getSshPassword(profileId: Long): String? {
@@ -67,11 +68,11 @@ class CredentialStore @Inject constructor(
     }
 
     fun deleteSshPassword(profileId: Long) {
-        prefs.edit().remove("ssh_password_$profileId").apply()
+        prefs.edit { remove("ssh_password_$profileId") }
     }
 
     fun saveSshPassphrase(profileId: Long, passphrase: String) {
-        prefs.edit().putString("ssh_passphrase_$profileId", encryptValue(passphrase)).apply()
+        prefs.edit { putString("ssh_passphrase_$profileId", encryptValue(passphrase)) }
     }
 
     fun getSshPassphrase(profileId: Long): String? {
@@ -79,7 +80,7 @@ class CredentialStore @Inject constructor(
     }
 
     fun deleteSshPassphrase(profileId: Long) {
-        prefs.edit().remove("ssh_passphrase_$profileId").apply()
+        prefs.edit { remove("ssh_passphrase_$profileId") }
     }
 
     fun deleteAllCredentials(profileId: Long) {

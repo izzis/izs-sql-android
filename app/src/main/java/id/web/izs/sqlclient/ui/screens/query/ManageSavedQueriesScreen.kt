@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.data.local.entity.QueryHistoryEntity
 import id.web.izs.sqlclient.ui.components.AppTopBar
@@ -120,7 +121,7 @@ fun ManageSavedQueriesScreen(
     var deleteTarget by remember { mutableStateOf<QueryHistoryEntity?>(null) }
 
     val topBarColor = try {
-        Color(android.graphics.Color.parseColor(profile.color))
+        Color(profile.color.toColorInt())
     } catch (_: Exception) {
         MaterialTheme.colorScheme.primary
     }

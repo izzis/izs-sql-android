@@ -7,9 +7,9 @@
 | Tooling | Version |
 |---------|---------|
 | Android Studio | Quail or newer (AGP 9.4.1, Kotlin 2.3.21) |
-| JDK | 17+ ( `compileSdk 37`, `minSdk 26`, `targetSdk 36`, `jvmTarget 17` ) |
+| JDK | 17+ ( `compileSdk 37`, `minSdk 26`, `targetSdk 37`, `jvmTarget 17` ) |
 | Android SDK | `compileSdk 37` (platform `android-37.2`), NDK not required |
-| Gradle | Wrapper `gradlew` checked in (`gradle-9.7.1`), no local install needed |
+| Gradle | Wrapper `gradlew` checked in (`gradle-9.8.0`), no local install needed |
 
 Runtime dependencies (see `app/build.gradle.kts`):
 

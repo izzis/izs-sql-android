@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.ui.theme.PermissionGranted
 
@@ -51,9 +52,9 @@ fun ConnectionCard(
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
     isConnecting: Boolean = false,
-    statusMessage: String = "",
-    modifier: Modifier = Modifier
+    statusMessage: String = ""
 ) {
     Card(
         modifier = modifier
@@ -76,7 +77,7 @@ fun ConnectionCard(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(Color(android.graphics.Color.parseColor(profile.color))),
+                        .background(Color(profile.color.toColorInt())),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isConnecting) {

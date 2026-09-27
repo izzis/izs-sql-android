@@ -2,6 +2,7 @@ package id.web.izs.sqlclient.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,16 +32,16 @@ class ThemeManager @Inject constructor(
     fun toggleTheme() {
         val newValue = !_isDarkMode.value
         _isDarkMode.value = newValue
-        prefs.edit().putBoolean(KEY_DARK_MODE, newValue).apply()
+        prefs.edit { putBoolean(KEY_DARK_MODE, newValue) }
     }
 
     fun setDarkMode(dark: Boolean) {
         _isDarkMode.value = dark
-        prefs.edit().putBoolean(KEY_DARK_MODE, dark).apply()
+        prefs.edit { putBoolean(KEY_DARK_MODE, dark) }
     }
 
     fun setFollowSystem(follow: Boolean) {
         _followSystem.value = follow
-        prefs.edit().putBoolean(KEY_FOLLOW_SYSTEM, follow).apply()
+        prefs.edit { putBoolean(KEY_FOLLOW_SYSTEM, follow) }
     }
 }

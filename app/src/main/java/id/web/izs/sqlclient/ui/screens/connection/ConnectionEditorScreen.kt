@@ -56,6 +56,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.ui.theme.ConnectionColors
 import id.web.izs.sqlclient.ui.viewmodel.ConnectionViewModel
@@ -115,7 +117,7 @@ fun ConnectionEditorScreen(
     var customHex by remember { mutableStateOf(existingColorHex) }
     val customSwatch = remember(customHex) {
         try {
-            Color(android.graphics.Color.parseColor(customHex))
+            Color(customHex.toColorInt())
         } catch (_: Exception) {
             null
         }
@@ -310,7 +312,7 @@ fun ConnectionEditorScreen(
                     OutlinedTextField(
                         value = sshKeyPath, onValueChange = { sshKeyPath = it },
                         label = { Text("Key Path (opt.)") },
-                        placeholder = { DimPlaceholder("/sdcard/keys/id_rsa") },
+                        placeholder = { DimPlaceholder("/storage/emulated/0/keys/id_rsa") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                         shape = RoundedCornerShape(14.dp)
                     )
@@ -482,9 +484,9 @@ private fun CustomColorDialog(
     val startHsv = remember(initial) {
         FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) }
     }
-    var hue by remember(initial) { mutableStateOf(startHsv[0]) }
-    var saturation by remember(initial) { mutableStateOf(startHsv[1]) }
-    var brightness by remember(initial) { mutableStateOf(startHsv[2]) }
+    var hue by remember(initial) { mutableFloatStateOf(startHsv[0]) }
+    var saturation by remember(initial) { mutableFloatStateOf(startHsv[1]) }
+    var brightness by remember(initial) { mutableFloatStateOf(startHsv[2]) }
     val picked = remember(hue, saturation, brightness) {
         Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
     }

@@ -97,6 +97,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.launch
 import id.web.izs.sqlclient.ui.viewmodel.BrowserViewModel
 import id.web.izs.sqlclient.ui.viewmodel.ConnectionViewModel
@@ -213,7 +214,7 @@ fun InlineDataEditorScreen(
     }
 
     val topBarColor = try {
-        androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(profile.color))
+        androidx.compose.ui.graphics.Color(profile.color.toColorInt())
     } catch (_: Exception) {
         MaterialTheme.colorScheme.primary
     }
@@ -1030,6 +1031,7 @@ private fun DataGrid(
     columns: List<ColumnMetadata>,
     rows: List<List<Any?>>,
     selectedRows: Set<Int>,
+    modifier: Modifier = Modifier,
     pendingEdits: Map<Pair<Int, Int>, id.web.izs.sqlclient.ui.viewmodel.DataEditorViewModel.StagedEdit> = emptyMap(),
     pendingDeletes: Set<Int> = emptySet(),
     isReadonly: Boolean,
@@ -1043,8 +1045,7 @@ private fun DataGrid(
     onDeleteRow: (Int) -> Unit = {},
     onLoadMore: () -> Unit,
     hasMoreData: Boolean,
-    isLoadingMore: Boolean,
-    modifier: Modifier = Modifier
+    isLoadingMore: Boolean
 ) {
     val horizontalScrollState = rememberScrollState()
     val lazyListState = rememberLazyListState()

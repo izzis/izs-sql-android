@@ -53,6 +53,7 @@ fun DatabaseTree(
     tableSizes: Map<String, String>,
     expandedDatabases: Set<String>,
     expandedTables: Set<String>,
+    modifier: Modifier = Modifier,
     loadingDatabases: Set<String> = emptySet(),
     searchQuery: String,
     users: List<UserInfo>,
@@ -67,8 +68,7 @@ fun DatabaseTree(
     onRefreshDatabase: (String) -> Unit = {},
     onRefreshSizes: (String) -> Unit = {},
     onUsersClick: () -> Unit,
-    onHistoryClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onHistoryClick: () -> Unit
 ) {
     val filteredDatabases = if (searchQuery.isBlank()) {
         databases

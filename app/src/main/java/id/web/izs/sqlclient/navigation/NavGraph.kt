@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.core.graphics.toColorInt
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -141,7 +142,7 @@ fun NavGraph(themeManager: ThemeManager) {
                     onOpenDbStructure = { db ->
                         navController.navigate("db_structure/$db")
                     },
-                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, Charsets.UTF_8)}") },
+                    onOpenUserDetail = { user, host -> navController.navigate("user_detail/$user/${java.net.URLEncoder.encode(host, "UTF-8")}") },
                     onNavigateToSavedQueries = { navController.navigate("manage_saved_queries") },
                     onReconnect = { connectionViewModel.reconnect() },
                     isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
@@ -194,7 +195,8 @@ fun NavGraph(themeManager: ThemeManager) {
             val table = backStackEntry.arguments?.getString("table") ?: return@composable
             val tableStructureViewModel: TableStructureViewModel = hiltViewModel()
             val structureIndexViewModel: IndexManagementViewModel = hiltViewModel()
-            val currentProfile = (connectionViewModel.connectionState.value as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
+            val connectionState by connectionViewModel.connectionState.collectAsState()
+            val currentProfile = (connectionState as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
             val topBarColor = profileTopBarColor(currentProfile?.color)
             TableStructureScreen(
                 viewModel = tableStructureViewModel,
@@ -220,7 +222,8 @@ fun NavGraph(themeManager: ThemeManager) {
         ) { backStackEntry ->
             val database = backStackEntry.arguments?.getString("database") ?: return@composable
             val dbStructureViewModel: DbStructureViewModel = hiltViewModel()
-            val currentProfile = (connectionViewModel.connectionState.value as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
+            val connectionState by connectionViewModel.connectionState.collectAsState()
+            val currentProfile = (connectionState as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
             val topBarColor = profileTopBarColor(currentProfile?.color)
             DbStructureScreen(
                 viewModel = dbStructureViewModel,
@@ -295,7 +298,8 @@ fun NavGraph(themeManager: ThemeManager) {
         }
 
         composable("manage_saved_queries") {
-            val currentProfile = (connectionViewModel.connectionState.value as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
+            val connectionState by connectionViewModel.connectionState.collectAsState()
+            val currentProfile = (connectionState as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
             if (currentProfile != null) {
                 ManageSavedQueriesScreen(
                     queryViewModel = queryViewModel,
@@ -314,7 +318,7 @@ fun NavGraph(themeManager: ThemeManager) {
 }
 
 private fun profileTopBarColor(hex: String?): androidx.compose.ui.graphics.Color = try {
-    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(hex ?: "#6200EE"))
+    androidx.compose.ui.graphics.Color((hex ?: "#6200EE").toColorInt())
 } catch (_: Exception) {
     androidx.compose.ui.graphics.Color(0xFF6200EE)
 }

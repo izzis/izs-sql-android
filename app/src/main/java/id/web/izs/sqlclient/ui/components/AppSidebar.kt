@@ -45,6 +45,7 @@ import id.web.izs.sqlclient.data.remote.model.UserInfo
 fun AppSidebar(
     profile: ConnectionProfileEntity,
     databases: List<DatabaseInfo>,
+    modifier: Modifier = Modifier,
     visibleDatabases: List<DatabaseInfo> = databases,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
@@ -56,8 +57,7 @@ fun AppSidebar(
     onHistoryClick: () -> Unit,
     onSavedQueriesClick: () -> Unit = {},
     savedQueryCount: Int = 0,
-    selectedDatabase: String? = null,
-    modifier: Modifier = Modifier
+    selectedDatabase: String? = null
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Column(

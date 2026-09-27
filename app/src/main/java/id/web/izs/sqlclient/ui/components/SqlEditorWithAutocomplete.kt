@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -437,8 +438,8 @@ fun SqlEditorWithAutocomplete(
     var showSuggestions by remember { mutableStateOf(false) }
     var suggestions by remember { mutableStateOf<List<SuggestionItem>>(emptyList()) }
     var isLoadingColumns by remember { mutableStateOf(false) }
-    var cursorX by remember { mutableStateOf(0f) }
-    var cursorY by remember { mutableStateOf(0f) }
+    var cursorX by remember { mutableFloatStateOf(0f) }
+    var cursorY by remember { mutableFloatStateOf(0f) }
 
     // Alias map for the current query
     val aliases = remember(query.text) { extractAliases(query.text) }

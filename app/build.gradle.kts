@@ -42,7 +42,7 @@ android {
     defaultConfig {
         applicationId = "id.web.izs.sqlclient"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = versionCodeOverride ?: 1
         versionName = versionNameOverride ?: "1.0.0"
 
@@ -110,7 +110,7 @@ android {
 
 dependencies {
     // Core
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
@@ -127,7 +127,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
