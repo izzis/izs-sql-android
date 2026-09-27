@@ -147,12 +147,11 @@ fun UserPrivilegeDetailScreen(
         val s = onToPrivs[onKey.lowercase()] ?: return false
         return s.contains("ALL") || s.contains(priv)
     }
-    fun effectiveChecked(priv: String, onKey: String): Boolean {
-        val k = "${priv.uppercase()}@${onKey.lowercase()}"
-        val pending = pendingPrivChanges[k]
-        if (pending != null) return pending
-        return hasPrivOnTarget(priv, onKey)
-    }
+    fun stagedKey(priv: String, onKey: String) = "${priv.uppercase()}@${onKey.lowercase()}"
+    fun isStaged(priv: String, onKey: String) = pendingPrivChanges.containsKey(stagedKey(priv, onKey))
+    fun anyStaged(onKey: String) = PRIVS.any { isStaged(it, onKey) }
+    fun effectiveChecked(priv: String, onKey: String): Boolean =
+        pendingPrivChanges[stagedKey(priv, onKey)] ?: hasPrivOnTarget(priv, onKey)
     fun effectiveHasAnyPriv(db: String, table: String?): Boolean {
         for (priv in PRIVS) if (effectiveChecked(priv, "*.*")) return true
         val dbKey = "${db}.*"
@@ -187,6 +186,11 @@ fun UserPrivilegeDetailScreen(
                 title = "$user@$host",
                 subtitle = if (isLocked) "Read-only" else null,
                 onBack = onBack,
+                onRefresh = {
+                    viewModel.refreshGrants(user, host)
+                    expandedDb?.let { viewModel.loadTablesForDb(it) }
+                },
+                isRefreshing = isLoading,
                 isLocked = isLocked,
                 onToggleLock = onToggleLock,
                 showLock = true,
@@ -230,6 +234,7 @@ fun UserPrivilegeDetailScreen(
                     val onKey = "${db}.*"
                     val allCheckedDb = PRIVS.all { effectiveChecked(it, onKey) }
                     val someCheckedDb = PRIVS.any { effectiveChecked(it, onKey) }
+                    val stagedDb = anyStaged(onKey)
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(db, style = MaterialTheme.typography.bodyMedium, fontWeight = if (boldDb) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
                         if (expandedPriv == db) {
@@ -245,9 +250,19 @@ fun UserPrivilegeDetailScreen(
                                     },
                                     enabled = !isLocked,
                                     modifier = Modifier.size(24.dp),
-                                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                    colors = if (stagedDb) {
+                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                    } else {
+                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                    }
                                 )
-                                Text("All", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
+                                Text(
+                                    "All",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (stagedDb) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    fontWeight = if (stagedDb) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
                             }
                         }
                         TextButton(onClick = { expandedPriv = if (expandedPriv == db) null else db }, enabled = true) { Text(if (expandedPriv == db) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
@@ -262,14 +277,27 @@ fun UserPrivilegeDetailScreen(
                                     row.forEach { priv ->
                                         val baseChecked = hasPrivOnTarget(priv, onKey)
                                         val checked = effectiveChecked(priv, onKey)
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).clickable(enabled = !isLocked) {
+                                        val staged = isStaged(priv, onKey)
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
+                                            .then(if (staged) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
+                                            .clickable(enabled = !isLocked) {
                                             viewModel.stagePrivToggle(user, host, priv, onKey, !checked, baseChecked)
                                         }) {
                                             Checkbox(checked = checked, onCheckedChange = { want: Boolean ->
                                                 if (isLocked) return@Checkbox
                                                 viewModel.stagePrivToggle(user, host, priv, onKey, want, baseChecked)
-                                            }, enabled = !isLocked, modifier = Modifier.size(24.dp))
-                                            Text(priv, style = MaterialTheme.typography.labelSmall)
+                                            }, enabled = !isLocked, modifier = Modifier.size(24.dp),
+                                                colors = if (staged) {
+                                                    CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                                } else {
+                                                    CheckboxDefaults.colors()
+                                                })
+                                            Text(
+                                                priv,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (staged) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = if (staged) FontWeight.SemiBold else FontWeight.Normal
+                                            )
                                         }
                                     }
                                 }
@@ -289,6 +317,7 @@ fun UserPrivilegeDetailScreen(
                                     val boldTbl = effectiveHasAnyPriv(db, tbl)
                                     val tKey = "$db.$tbl"
                                     val allCheckedTbl = PRIVS.all { effectiveChecked(it, tKey) }
+                                    val stagedTbl = anyStaged(tKey)
                                     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Text(tbl, style = MaterialTheme.typography.bodySmall, fontWeight = if (boldTbl) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
@@ -305,9 +334,19 @@ fun UserPrivilegeDetailScreen(
                                                         },
                                                         enabled = !isLocked,
                                                         modifier = Modifier.size(24.dp),
-                                                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                                        colors = if (stagedTbl) {
+                                                            CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                                        } else {
+                                                            CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                                        }
                                                     )
-                                                    Text("All", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 4.dp))
+                                                    Text(
+                                                        "All",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (stagedTbl) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                                        fontWeight = if (stagedTbl) FontWeight.SemiBold else FontWeight.Normal,
+                                                        modifier = Modifier.padding(end = 4.dp)
+                                                    )
                                                 }
                                             }
                                             TextButton(onClick = { expandedPriv = if (expandedPriv == tKey) null else tKey }) { Text(if (expandedPriv == tKey) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
@@ -319,14 +358,27 @@ fun UserPrivilegeDetailScreen(
                                                         row.forEach { priv ->
                                                             val baseCheckedTbl = hasPrivOnTarget(priv, tKey)
                                                             val checkedTbl = effectiveChecked(priv, tKey)
-                                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).clickable(enabled = !isLocked) {
+                                                            val stagedTblCell = isStaged(priv, tKey)
+                                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
+                                                                .then(if (stagedTblCell) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
+                                                                .clickable(enabled = !isLocked) {
                                                                 viewModel.stagePrivToggle(user, host, priv, tKey, !checkedTbl, baseCheckedTbl)
                                                             }) {
                                                                 Checkbox(checked = checkedTbl, onCheckedChange = { want: Boolean ->
                                                                     if (isLocked) return@Checkbox
                                                                     viewModel.stagePrivToggle(user, host, priv, tKey, want, baseCheckedTbl)
-                                                                }, enabled = !isLocked, modifier = Modifier.size(24.dp))
-                                                                Text(priv, style = MaterialTheme.typography.labelSmall)
+                                                                }, enabled = !isLocked, modifier = Modifier.size(24.dp),
+                                                                    colors = if (stagedTblCell) {
+                                                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                                                    } else {
+                                                                        CheckboxDefaults.colors()
+                                                                    })
+                                                                Text(
+                                                                    priv,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = if (stagedTblCell) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                                                    fontWeight = if (stagedTblCell) FontWeight.SemiBold else FontWeight.Normal
+                                                                )
                                                             }
                                                         }
                                                     }

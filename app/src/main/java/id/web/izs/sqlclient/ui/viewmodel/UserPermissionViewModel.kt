@@ -159,6 +159,17 @@ class UserPermissionViewModel @Inject constructor(
         loadUsers(force = true)
     }
 
+    /**
+     * Manual refresh from the privilege-detail TopBar — re-reads databases, grants and clears
+     * the cached table lists (caller reloads the expanded one). Pending privilege edits stay.
+     */
+    fun refreshGrants(user: String, host: String) {
+        resetQueryLog()
+        _dbTables.value = emptyMap()
+        loadAllDatabases()
+        loadGrants(user, host)
+    }
+
     fun loadUsers(force: Boolean = false) {
         _currentQuery.value = _currentQuery.value + QueryLogEntry("SELECT user, host FROM mysql.user ORDER BY user, host")
         viewModelScope.launch {

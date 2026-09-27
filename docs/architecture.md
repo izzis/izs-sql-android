@@ -145,7 +145,7 @@ Write-query rules (preview + confirm + lock) live in [write-safety.md](write-saf
 | `db_structure/{database}` | Database structure | `ui/screens/browser/DbStructureScreen.kt` + `DbStructureViewModel` + `DbStructureSql` | Views / Triggers / Events / Routines per database: lazy definitions, create/edit/drop + preview, DROP+CREATE for trigger/routine edit, event enable toggle |
 | `data_editor/{database}/{table}` | Inline data editor | `ui/screens/dataeditor/InlineDataEditorScreen.kt` | Grid, WHERE bar, staging, limit + timing status bar |
 | `users` | User management | `ui/screens/user/UserManagementScreen.kt` | Users + Grants tabs |
-| `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix, Rename/Password dialogs |
+| `user_detail/{user}/{host}` | Privilege detail | `ui/screens/user/UserPrivilegeDetailScreen.kt` | Full-page drill `user → databases → tables`, per-`ON` 8-priv matrix (staged toggles render red until saved), Rename/Password dialogs |
 
 `NavGraph` holds the only `rememberNavController()` and owns the four shared VMs (`ConnectionViewModel`, `BrowserViewModel`, `QueryViewModel`) across destinations; the remaining VMs are `hiltViewModel()` per destination.
 

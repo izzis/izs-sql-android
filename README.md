@@ -21,7 +21,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **SQL editor with autocomplete** — syntax highlighting, context-aware `db.table.column` + JOIN autocomplete. Write queries show a confirm dialog; TopBar refresh only re-executes reads.
 - **Inline data editor** — paginated grid with infinite scroll, WHERE filter, per-cell edit, batch staging, custom query bar with write-confirm.
 - **Batch write flow** — every write goes **Save → Confirm (SQL preview) → Execute**.
-- **User & privilege management** — `mysql.user` list, per-`user@host` privilege matrix.
+- **User & privilege management** — `mysql.user` list, per-`user@host` privilege matrix; staged (not yet saved) grants are highlighted red until Save → Confirm → Execute.
 - **Indexes / table structure** — structure + index health (duplicate/redundant/low-selectivity), create/drop with preview.
 - **Views / Triggers / Events / Routines** — per-database create/edit/drop + preview.
 - **Session lock vs profile default** — live lock toggle, wired to every route.
