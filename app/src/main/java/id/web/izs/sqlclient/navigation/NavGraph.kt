@@ -195,11 +195,7 @@ fun NavGraph(themeManager: ThemeManager) {
             val tableStructureViewModel: TableStructureViewModel = hiltViewModel()
             val structureIndexViewModel: IndexManagementViewModel = hiltViewModel()
             val currentProfile = (connectionViewModel.connectionState.value as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
-            val topBarColor = try {
-                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(currentProfile?.color ?: "#6200EE"))
-            } catch (_: Exception) {
-                androidx.compose.ui.graphics.Color(0xFF6200EE)
-            }
+            val topBarColor = profileTopBarColor(currentProfile?.color)
             TableStructureScreen(
                 viewModel = tableStructureViewModel,
                 indexViewModel = structureIndexViewModel,
@@ -225,11 +221,7 @@ fun NavGraph(themeManager: ThemeManager) {
             val database = backStackEntry.arguments?.getString("database") ?: return@composable
             val dbStructureViewModel: DbStructureViewModel = hiltViewModel()
             val currentProfile = (connectionViewModel.connectionState.value as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
-            val topBarColor = try {
-                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(currentProfile?.color ?: "#6200EE"))
-            } catch (_: Exception) {
-                androidx.compose.ui.graphics.Color(0xFF6200EE)
-            }
+            val topBarColor = profileTopBarColor(currentProfile?.color)
             DbStructureScreen(
                 viewModel = dbStructureViewModel,
                 connectionViewModel = connectionViewModel,
@@ -285,6 +277,9 @@ fun NavGraph(themeManager: ThemeManager) {
             val user = backStackEntry.arguments?.getString("user") ?: return@composable
             val host = backStackEntry.arguments?.getString("host") ?: return@composable
             val vm: UserPermissionViewModel = hiltViewModel()
+            val connectionState by connectionViewModel.connectionState.collectAsState()
+            val currentProfile = (connectionState as? id.web.izs.sqlclient.ui.viewmodel.ConnectionState.Connected)?.profile
+            val topBarColor = profileTopBarColor(currentProfile?.color)
             UserPrivilegeDetailScreen(
                 viewModel = vm,
                 connectionViewModel = connectionViewModel,
@@ -294,7 +289,8 @@ fun NavGraph(themeManager: ThemeManager) {
                 onToggleLock = { connectionViewModel.setSessionLocked(!connectionViewModel.sessionLocked.value) },
                 onBack = { navController.popBackStack() },
                 onReconnect = { connectionViewModel.reconnect() },
-                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value
+                isReconnecting = connectionViewModel.isReconnecting.collectAsState().value,
+                topBarColor = topBarColor
             )
         }
 
@@ -315,4 +311,10 @@ fun NavGraph(themeManager: ThemeManager) {
             }
         }
     }
+}
+
+private fun profileTopBarColor(hex: String?): androidx.compose.ui.graphics.Color = try {
+    androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(hex ?: "#6200EE"))
+} catch (_: Exception) {
+    androidx.compose.ui.graphics.Color(0xFF6200EE)
 }

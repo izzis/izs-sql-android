@@ -70,7 +70,8 @@ fun UserPrivilegeDetailScreen(
     onToggleLock: (() -> Unit)? = null,
     onBack: () -> Unit,
     onReconnect: (() -> Unit)? = null,
-    isReconnecting: Boolean = false
+    isReconnecting: Boolean = false,
+    topBarColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary
 ) {
     val grants by viewModel.grants.collectAsState()
     val allDatabases by viewModel.allDatabases.collectAsState()
@@ -185,6 +186,7 @@ fun UserPrivilegeDetailScreen(
             AppTopBar(
                 title = "$user@$host",
                 subtitle = if (isLocked) "Read-only" else null,
+                containerColor = topBarColor,
                 onBack = onBack,
                 onRefresh = {
                     viewModel.refreshGrants(user, host)
