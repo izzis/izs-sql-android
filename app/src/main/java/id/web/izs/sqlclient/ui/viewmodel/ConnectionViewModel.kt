@@ -12,6 +12,7 @@ import id.web.izs.sqlclient.data.remote.SshTunnelManager
 import id.web.izs.sqlclient.data.repository.ConnectionRepository
 import id.web.izs.sqlclient.util.CredentialStore
 import id.web.izs.sqlclient.util.DbeaverImport
+import id.web.izs.sqlclient.util.ImportDedupe
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -255,6 +256,32 @@ class ConnectionViewModel @Inject constructor(
     private var applyAll: ConnectionRepository.ImportAction? = null
     private var importNote: String? = null
 
+    // Snapshot of the profiles table taken when the import starts (before any write).
+    // Duplicate detection only ever looks here — ids assigned by this import's own
+    // inserts can never fake a conflict, and DBeaver profiles (id = 0) are still found by key.
+    private var existingByKey: Map<String, ConnectionProfileEntity> = emptyMap()
+    private var existingById: Map<Long, ConnectionProfileEntity> = emptyMap()
+
+    private suspend fun takeImportSnapshot() {
+        val existing = connectionRepository.getProfilesOnce()
+        existingByKey = existing.associateBy(ImportDedupe::keyOf)
+        existingById = existing.associateBy { it.id }
+    }
+
+    private fun matchImport(parsed: ConnectionRepository.ParsedProfile): ConnectionProfileEntity? =
+        ImportDedupe.findExisting(parsed.profile, existingByKey, existingById)
+
+    /** Track a row just written so a later entry of the same import (in-file duplicate) is detected too. */
+    private fun rememberImported(written: ConnectionProfileEntity) {
+        existingByKey = existingByKey + (ImportDedupe.keyOf(written) to written)
+        existingById = existingById + (written.id to written)
+    }
+
+    private fun clearImportSnapshot() {
+        existingByKey = emptyMap()
+        existingById = emptyMap()
+    }
+
     // Requests the .enc master password — set when the picked file is not DBeaver, observed by UI.
     private val _requestEncPassword = MutableStateFlow<Uri?>(null)
     val requestEncPassword: StateFlow<Uri?> = _requestEncPassword.asStateFlow()
@@ -275,6 +302,7 @@ class ConnectionViewModel @Inject constructor(
             _exportImportMessage.value = if (importNote != null) "$stopMsg (${importNote})" else stopMsg
             applyAll = null
             importNote = null
+            clearImportSnapshot()
         }
     }
 
@@ -316,6 +344,7 @@ class ConnectionViewModel @Inject constructor(
                 importReplaced = 0; importInserted = 0; importSkipped = 0
                 applyAll = null
                 importNote = null
+                takeImportSnapshot()
                 processNextImport()
             } catch (e: Exception) {
                 _exportImportMessage.value = e.message ?: "Import failed"
@@ -358,6 +387,7 @@ class ConnectionViewModel @Inject constructor(
                 if (outcome.withoutPassword > 0) bits.add("${outcome.withoutPassword} without password — enter manually in the editor")
                 if (outcome.credentialsLocked) bits.add("credentials locked by DBeaver Project/Master password")
                 importNote = if (bits.isEmpty()) null else "DBeaver: " + bits.joinToString("; ")
+                takeImportSnapshot()
                 processNextImport()
             } catch (e: Exception) {
                 _exportImportMessage.value = e.message ?: "Import failed"
@@ -365,34 +395,50 @@ class ConnectionViewModel @Inject constructor(
         }
     }
 
+    /** Run one decision against the snapshot match and update counters. */
+    private suspend fun applyAndCount(
+        parsed: ConnectionRepository.ParsedProfile,
+        existing: ConnectionProfileEntity?,
+        action: ConnectionRepository.ImportAction
+    ) {
+        val effective = if (existing == null) ConnectionRepository.ImportAction.INSERT_AS_NEW else action
+        val written = connectionRepository.applyImportDecision(parsed, existing, effective)
+        if (written == null) {
+            importSkipped++
+            return
+        }
+        rememberImported(written)
+        when (effective) {
+            ConnectionRepository.ImportAction.REPLACE -> importReplaced++
+            else -> importInserted++
+        }
+    }
+
     private suspend fun processNextImport() {
         while (pendingIndex < pendingImport.size) {
             val parsed = pendingImport[pendingIndex]
-            val existing = if (parsed.profile.id != 0L) connectionRepository.getProfileById(parsed.profile.id) else null
+            // Duplicate = connection identity (host:port:user:db) or file id, both
+            // against the pre-import snapshot — never a live query.
+            val existing = matchImport(parsed)
             if (existing == null) {
-                // No conflict → auto insert (covers file without id, id==0, or id not found)
-                connectionRepository.applyImportDecision(parsed, ConnectionRepository.ImportAction.INSERT_AS_NEW)
-                importInserted++
+                applyAndCount(parsed, null, ConnectionRepository.ImportAction.INSERT_AS_NEW)
                 pendingIndex++
                 continue
             }
-            // Conflict → apply cached All if set
+            // Conflict → apply cached All if set, else ask the user
             val cached = applyAll
             if (cached != null) {
-                val ok = connectionRepository.applyImportDecision(parsed, cached)
-                if (cached == ConnectionRepository.ImportAction.REPLACE && ok) importReplaced++
-                else if (cached == ConnectionRepository.ImportAction.SKIP) importSkipped++
-                else if (cached == ConnectionRepository.ImportAction.INSERT_AS_NEW && ok) importInserted++
+                applyAndCount(parsed, existing, cached)
                 pendingIndex++
                 continue
             }
-            // Need user decision → show dialog
             _importConflict.value = ImportConflict.Awaiting(pendingImport, parsed, existing, pendingIndex, pendingImport.size)
             return
         }
         // Done
         _importConflict.value = ImportConflict.Idle
         pendingImport = emptyList()
+        clearImportSnapshot()
         val doneMsg = "Import done — $importInserted inserted, $importReplaced replaced, $importSkipped skipped"
         _exportImportMessage.value = if (importNote != null) "$doneMsg (${importNote})" else doneMsg
         applyAll = null
@@ -403,17 +449,7 @@ class ConnectionViewModel @Inject constructor(
         viewModelScope.launch {
             if (applyToAllChecked) applyAll = action
             val parsed = pendingImport.getOrNull(pendingIndex) ?: run { _importConflict.value = ImportConflict.Idle; return@launch }
-            val existing = if (parsed.profile.id != 0L) connectionRepository.getProfileById(parsed.profile.id) else null
-            if (existing != null) {
-                val ok = connectionRepository.applyImportDecision(parsed, action)
-                if (action == ConnectionRepository.ImportAction.REPLACE && ok) importReplaced++
-                else if (action == ConnectionRepository.ImportAction.SKIP) importSkipped++
-                else if (action == ConnectionRepository.ImportAction.INSERT_AS_NEW && ok) importInserted++
-            } else {
-                // Race: no conflict anymore → treat as insert
-                connectionRepository.applyImportDecision(parsed, ConnectionRepository.ImportAction.INSERT_AS_NEW)
-                importInserted++
-            }
+            applyAndCount(parsed, matchImport(parsed), action)
             pendingIndex++
             _importConflict.value = ImportConflict.Idle
             processNextImport()

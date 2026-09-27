@@ -26,6 +26,9 @@ class ConnectionRepository @Inject constructor(
 ) {
     fun getAllProfiles(): Flow<List<ConnectionProfileEntity>> = profileDao.getAllProfiles()
 
+    /** One-shot read — import takes this snapshot before writing so duplicate detection never sees its own inserts. */
+    suspend fun getProfilesOnce(): List<ConnectionProfileEntity> = profileDao.getAllProfiles().first()
+
     suspend fun getProfileById(id: Long): ConnectionProfileEntity? = profileDao.getProfileById(id)
 
     fun getProfileByIdFlow(id: Long): Flow<ConnectionProfileEntity?> = profileDao.getProfileByIdFlow(id)
@@ -268,34 +271,40 @@ class ConnectionRepository @Inject constructor(
         out
     }
 
-    suspend fun applyImportDecision(parsed: ParsedProfile, action: ImportAction): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * Apply one import decision. [existing] is the matched row (see [id.web.izs.sqlclient.util.ImportDedupe])
+     * resolved by the caller against a pre-import snapshot — never re-queried here.
+     * Returns the row as written (with its final id), or null when skipped.
+     */
+    suspend fun applyImportDecision(parsed: ParsedProfile, existing: ConnectionProfileEntity?, action: ImportAction): ConnectionProfileEntity? = withContext(Dispatchers.IO) {
         val p = parsed.profile
-        val existing = if (p.id != 0L) profileDao.getProfileById(p.id) else null
         when {
             existing == null -> {
-                // No conflict (id missing or not found) → always insert new (backward compat)
-                val newId = profileDao.insertProfile(p.copy(id = 0))
-                if (parsed.password.isNotEmpty()) credentialStore.savePassword(newId, parsed.password)
-                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(newId, parsed.sshPassword)
-                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(newId, parsed.sshPassphrase)
-                true
+                // No conflict → insert new (autoGenerate id), credentials follow the new id
+                val written = p.copy(id = profileDao.insertProfile(p.copy(id = 0)))
+                if (parsed.password.isNotEmpty()) credentialStore.savePassword(written.id, parsed.password)
+                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(written.id, parsed.sshPassword)
+                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(written.id, parsed.sshPassphrase)
+                written
             }
-            action == ImportAction.SKIP -> false
+            action == ImportAction.SKIP -> null
             action == ImportAction.REPLACE -> {
-                profileDao.insertProfile(p) // REPLACE on PK
-                if (parsed.password.isNotEmpty()) credentialStore.savePassword(p.id, parsed.password) else credentialStore.deletePassword(p.id)
-                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(p.id, parsed.sshPassword)
-                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(p.id, parsed.sshPassphrase)
-                true
+                // Overwrite the matched row — keep its local id, never the file id
+                val written = p.copy(id = existing.id)
+                profileDao.insertProfile(written)
+                if (parsed.password.isNotEmpty()) credentialStore.savePassword(existing.id, parsed.password) else credentialStore.deletePassword(existing.id)
+                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(existing.id, parsed.sshPassword)
+                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(existing.id, parsed.sshPassphrase)
+                written
             }
             action == ImportAction.INSERT_AS_NEW -> {
-                val newId = profileDao.insertProfile(p.copy(id = 0))
-                if (parsed.password.isNotEmpty()) credentialStore.savePassword(newId, parsed.password)
-                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(newId, parsed.sshPassword)
-                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(newId, parsed.sshPassphrase)
-                true
+                val written = p.copy(id = profileDao.insertProfile(p.copy(id = 0)))
+                if (parsed.password.isNotEmpty()) credentialStore.savePassword(written.id, parsed.password)
+                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(written.id, parsed.sshPassword)
+                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(written.id, parsed.sshPassphrase)
+                written
             }
-            else -> false
+            else -> null
         }
     }
 
@@ -304,17 +313,7 @@ class ConnectionRepository @Inject constructor(
         val list = decryptAndParseProfiles(context, uri, masterPassword)
         var imported = 0
         for (parsed in list) {
-            val existing = if (parsed.profile.id != 0L) profileDao.getProfileById(parsed.profile.id) else null
-            if (existing != null) {
-                // Old path had no conflict UI → treat as insert new to avoid surprise overwrite
-                val newId = profileDao.insertProfile(parsed.profile.copy(id = 0))
-                if (parsed.password.isNotEmpty()) credentialStore.savePassword(newId, parsed.password)
-                if (parsed.sshPassword.isNotEmpty()) credentialStore.saveSshPassword(newId, parsed.sshPassword)
-                if (parsed.sshPassphrase.isNotEmpty()) credentialStore.saveSshPassphrase(newId, parsed.sshPassphrase)
-                imported++
-            } else {
-                if (applyImportDecision(parsed, ImportAction.INSERT_AS_NEW)) imported++
-            }
+            if (applyImportDecision(parsed, null, ImportAction.INSERT_AS_NEW) != null) imported++
         }
         imported
     }

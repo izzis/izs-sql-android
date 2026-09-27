@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DarkMode
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -454,12 +456,19 @@ fun ConnectionListScreen(
                     }
                     Text("Choose action for this profile:", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = applyAllChecked,
+                                role = Role.Checkbox,
+                                onValueChange = { applyAllChecked = it }
+                            )
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
                             checked = applyAllChecked,
-                            onCheckedChange = { applyAllChecked = it }
+                            onCheckedChange = null // whole row toggles (merged semantics, no double-fire)
                         )
                         Column(modifier = Modifier.padding(start = 4.dp)) {
                             Text("Apply to all remaining duplicates", style = MaterialTheme.typography.bodySmall)
