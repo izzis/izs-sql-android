@@ -68,6 +68,7 @@ import id.web.izs.sqlclient.ui.viewmodel.BrowserViewModel
 import id.web.izs.sqlclient.ui.viewmodel.ConnectionViewModel
 import id.web.izs.sqlclient.ui.viewmodel.QueryResultState
 import id.web.izs.sqlclient.ui.viewmodel.QueryViewModel
+import id.web.izs.sqlclient.util.QueryLogEntry
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,7 +200,11 @@ fun SQLEditorScreen(
         },
         bottomBar = {
             CurrentQueryBar(
-                queries = if (currentQuery.isNotEmpty()) currentQuery else listOfNotNull(activeTab?.query),
+                queries = if (currentQuery.isNotEmpty()) {
+                    currentQuery
+                } else {
+                    listOfNotNull(activeTab?.query).map { QueryLogEntry(it) }
+                },
                 isExecuting = isExecuting,
                 onCancel = { viewModel.cancelQuery() }
             )

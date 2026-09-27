@@ -9,6 +9,8 @@ import id.web.izs.sqlclient.data.remote.model.EventInfo
 import id.web.izs.sqlclient.data.remote.model.RoutineInfo
 import id.web.izs.sqlclient.data.remote.model.TriggerInfo
 import id.web.izs.sqlclient.util.DbStructureSql
+import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,8 +63,18 @@ class DbStructureViewModel @Inject constructor(
     private val _operationSuccess = MutableStateFlow<String?>(null)
     val operationSuccess: StateFlow<String?> = _operationSuccess.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     // ---------- views ----------
 
@@ -72,7 +84,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW FULL TABLES FROM `$database` WHERE TABLE_TYPE LIKE 'VIEW'"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _views.value = result.rows.map { it[0].toString() }.sorted()
@@ -95,7 +107,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW CREATE VIEW `$database`.`$view`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         result.rows.firstOrNull()?.getOrNull(1)?.toString()?.let { ddl ->
@@ -147,7 +159,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW TRIGGERS FROM `$database`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _triggers.value = result.rows.map { row ->
@@ -179,7 +191,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW CREATE TRIGGER `$database`.`$trigger`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         result.rows.firstOrNull()?.getOrNull(2)?.toString()?.let { ddl ->
@@ -245,7 +257,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW EVENTS FROM `$database`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         // SHOW EVENTS columns: Db, Name, Definer, Time zone, Type,
@@ -282,7 +294,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW CREATE EVENT `$database`.`$event`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         result.rows.firstOrNull()?.getOrNull(3)?.toString()?.let { ddl ->
@@ -297,7 +309,7 @@ class DbStructureViewModel @Inject constructor(
                     val escapedEvent = event.replace("'", "''")
                     val bodySql = "SELECT EVENT_DEFINITION FROM information_schema.EVENTS " +
                         "WHERE EVENT_SCHEMA = '$escapedDb' AND EVENT_NAME = '$escapedEvent'"
-                    _currentQuery.value = _currentQuery.value + bodySql
+                    _currentQuery.value = _currentQuery.value + QueryLogEntry(bodySql)
                     when (val bodyResult = connectionManager.executeQuery(bodySql)) {
                         is QueryResult.Success -> {
                             bodyResult.rows.firstOrNull()?.getOrNull(0)?.toString()?.let { body ->
@@ -374,7 +386,7 @@ class DbStructureViewModel @Inject constructor(
                 val escaped = database.replace("'", "''")
                 val sql = "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES " +
                     "WHERE ROUTINE_SCHEMA = '$escaped' ORDER BY 1, 2"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _routines.value = result.rows.map { row ->
@@ -399,7 +411,7 @@ class DbStructureViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "SHOW CREATE ${kind.uppercase()} `$database`.`$name`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         result.rows.firstOrNull()?.getOrNull(2)?.toString()?.let { ddl ->
@@ -462,7 +474,7 @@ class DbStructureViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val sql = "SHOW TABLES FROM `$database`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _tables.value = result.rows.map { it[0].toString() }.sorted()
@@ -541,7 +553,7 @@ class DbStructureViewModel @Inject constructor(
             try {
                 val executed = mutableListOf<String>()
                 for (sql in statements) {
-                    _currentQuery.value = _currentQuery.value + sql
+                    _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                     when (val result = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> {
                             _error.value = result.message

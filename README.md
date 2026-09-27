@@ -53,7 +53,7 @@ Dari nol (install JDK/SDK): [docs/setup.md](docs/setup.md).
    - Workflow/test/troubleshoot — [docs/development.md](docs/development.md)
 2. **Prefer `Glob`/`Grep`** untuk discovery; peta struktur ada di [docs/architecture.md](docs/architecture.md#project-structure).
 3. **Write query safety**: semua write WAJIB preview + confirm dialog + lock gate di ViewModel. Klasifikasi `SqlUtil.isWriteQuery()` **default-deny** (`FLUSH` satu-satunya exception by-design). Refresh tidak boleh eksekusi write. Detail: [docs/write-safety.md](docs/write-safety.md).
-4. **Query log**: setiap query ke server harus di-append ke `_currentQuery` sebelum `executeQuery()` — no hidden queries.
+4. **Query log**: setiap query ke server harus di-append ke `_currentQuery` sebelum `executeQuery()` — no hidden queries. Query gagal → barisnya merah + pesan error dari server (verbatim) di bawah nomor log yang sama (`QueryLogEntry.error`, dari `connectionManager.queryFailures`).
 5. **Jangan persist `sessionLocked`** — live state `ConnectionViewModel` saja.
 6. **Testing gate**: fitur query baru WAJIB tambah/update test (`SqlUtilTest`, 22 tests) dan jaga CI hijau.
 7. `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push butuh approval.

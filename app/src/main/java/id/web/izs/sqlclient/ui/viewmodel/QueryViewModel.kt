@@ -9,6 +9,8 @@ import id.web.izs.sqlclient.data.remote.QueryResult
 import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.CellDisplay
+import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,8 +61,18 @@ class QueryViewModel @Inject constructor(
 
     private var currentQueryJob: Job? = null
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     private val _savedQueries = MutableStateFlow<List<QueryHistoryEntity>>(emptyList())
     val savedQueries: StateFlow<List<QueryHistoryEntity>> = _savedQueries.asStateFlow()
@@ -134,7 +146,7 @@ class QueryViewModel @Inject constructor(
     fun useDatabase(database: String) {
         _currentDatabase = database
         val sql = "USE `$database`"
-        _currentQuery.value = listOf(sql)
+        _currentQuery.value = listOf(QueryLogEntry(sql))
         viewModelScope.launch {
             try { connectionManager.executeQuery(sql) } catch (_: Exception) {}
         }
@@ -147,7 +159,7 @@ class QueryViewModel @Inject constructor(
         if (query.isBlank()) return
         if (isLocked && isWriteQuery()) { _queryResult.value = QueryResultState.Error("Locked \u2014 unlock to write"); return }
 
-        _currentQuery.value = listOf(query)
+        _currentQuery.value = listOf(QueryLogEntry(query))
         currentQueryJob?.cancel()
         currentQueryJob = viewModelScope.launch {
             _isExecuting.value = true
@@ -337,7 +349,7 @@ class QueryViewModel @Inject constructor(
 
     suspend fun fetchColumns(database: String, table: String): List<String>? {
         val sql = "SHOW COLUMNS FROM `$database`.`$table`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         return try {
             when (val result = connectionManager.executeQueryIfFree(sql)) {
                 is QueryResult.Success -> result.rows.mapNotNull { it[0]?.toString() }

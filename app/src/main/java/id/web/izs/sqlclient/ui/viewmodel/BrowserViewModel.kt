@@ -11,8 +11,10 @@ import id.web.izs.sqlclient.data.remote.model.DatabaseInfo
 import id.web.izs.sqlclient.data.remote.model.IndexInfo
 import id.web.izs.sqlclient.data.remote.model.PrivilegeSet
 import id.web.izs.sqlclient.data.repository.QueryRepository
+import id.web.izs.sqlclient.util.QueryLogEntry
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.TableSql
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,8 +82,18 @@ class BrowserViewModel @Inject constructor(
     private val _hasLoadedDatabases = MutableStateFlow(false)
     val hasLoadedDatabases: StateFlow<Boolean> = _hasLoadedDatabases
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     private val _operationSuccess = MutableStateFlow<String?>(null)
     val operationSuccess: StateFlow<String?> = _operationSuccess
@@ -111,7 +123,7 @@ class BrowserViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Error -> _error.value = result.message
                     else -> {
@@ -217,7 +229,7 @@ class BrowserViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
-                _currentQuery.value = listOf("SHOW GRANTS FOR CURRENT_USER()", "SHOW DATABASES")
+                _currentQuery.value = listOf(QueryLogEntry("SHOW GRANTS FOR CURRENT_USER()"), QueryLogEntry("SHOW DATABASES"))
                 when (val result = connectionManager.executeQuery("SHOW DATABASES")) {
                     is QueryResult.Success -> {
                         val all = result.rows.map { DatabaseInfo(name = it[0].toString()) }
@@ -296,7 +308,7 @@ class BrowserViewModel @Inject constructor(
         _loadingDatabases.value = _loadingDatabases.value + database
         _isRefreshingTables.value = true
         viewModelScope.launch {
-            _currentQuery.value = _currentQuery.value + "SHOW TABLES IN `$database`"
+            _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW TABLES IN `$database`")
         try {
                 when (val result = connectionManager.executeQuery("SHOW TABLES IN `$database`")) {
                     is QueryResult.Success -> {
@@ -349,7 +361,7 @@ class BrowserViewModel @Inject constructor(
     suspend fun requestTablesSync(database: String): List<String>? {
         if (_tables.value.containsKey(database)) return _tables.value[database]
         val sql = "SHOW TABLES IN `$database`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         return try {
             when (val result = connectionManager.executeQueryIfFree(sql)) {
                 is QueryResult.Success -> {
@@ -405,7 +417,7 @@ class BrowserViewModel @Inject constructor(
             try {
                 val key = "$database.$table"
                 if (_columns.value[key] != null) return@launch
-                _currentQuery.value = _currentQuery.value + "SHOW FULL COLUMNS FROM `$database`.`$table`"
+                _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW FULL COLUMNS FROM `$database`.`$table`")
                 when (val result = connectionManager.executeQuery("SHOW FULL COLUMNS FROM `$database`.`$table`")) {
                     is QueryResult.Success -> {
                         val columnList = result.rows.map { row ->
@@ -437,7 +449,7 @@ class BrowserViewModel @Inject constructor(
             try {
                 val key = "$database.$table"
                 if (_indexes.value[key] != null) return@launch
-                _currentQuery.value = _currentQuery.value + "SHOW INDEX FROM `$database`.`$table`"
+                _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW INDEX FROM `$database`.`$table`")
                 when (val result = connectionManager.executeQuery("SHOW INDEX FROM `$database`.`$table`")) {
                     is QueryResult.Success -> {
                         val indexMap = mutableMapOf<String, MutableList<Pair<String, Int>>>()
@@ -492,7 +504,7 @@ class BrowserViewModel @Inject constructor(
             try {
                 if (!_tables.value.containsKey(database)) return@launch
                 val sql = "SELECT table_name, data_length + index_length AS total_bytes FROM information_schema.TABLES WHERE table_schema = '$database' ORDER BY table_name"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 val result = connectionManager.executeQueryIfFree(sql) ?: connectionManager.executeQuery(sql)
                 when (result) {
                     is QueryResult.Success -> {

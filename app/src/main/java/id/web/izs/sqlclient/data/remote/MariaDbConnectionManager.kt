@@ -5,6 +5,10 @@ import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.util.CredentialStore
 import id.web.izs.sqlclient.util.SqlUtil
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -195,6 +199,22 @@ class MariaDbConnectionManager @Inject constructor(
 
     private val queryMutex = kotlinx.coroutines.sync.Mutex()
 
+    /**
+     * Every failed statement, published once per execute call with the exact SQL that was sent
+     * and the verbatim driver/server message. Each ViewModel collects this and attaches the
+     * message to its own query-log line ([id.web.izs.sqlclient.ui.components.CurrentQueryBar]
+     * draws it red) — the message is never rewritten here or there.
+     */
+    private val _queryFailures = MutableSharedFlow<QueryFailure>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val queryFailures: SharedFlow<QueryFailure> = _queryFailures.asSharedFlow()
+
+    private fun reportFailure(sql: String, result: QueryResult) {
+        if (result is QueryResult.Error) _queryFailures.tryEmit(QueryFailure(sql, result.message))
+    }
+
     /** Low-priority query that never blocks UI-critical queries: skips if mutex is busy. */
     suspend fun executeQueryIfFree(sql: String): QueryResult? = withContext(Dispatchers.IO) {
         if (!queryMutex.tryLock()) return@withContext null
@@ -234,7 +254,7 @@ class MariaDbConnectionManager @Inject constructor(
             cancelRequested.set(false)
             queryMutex.unlock()
         }
-    }
+    }.also { result -> if (result != null) reportFailure(sql, result) }
 
     /**
      * Executes a query, self-healing the session when the connection died underneath us
@@ -255,7 +275,7 @@ class MariaDbConnectionManager @Inject constructor(
             }
         }
         first
-    }
+    }.also { reportFailure(sql, it) }
 
     private suspend fun executeQueryOnce(sql: String): QueryResult = withContext(Dispatchers.IO) {
         val conn = activeConnection ?: return@withContext QueryResult.Error("No active connection")
@@ -311,7 +331,7 @@ class MariaDbConnectionManager @Inject constructor(
             reconnectSilently()
         }
         first
-    }
+    }.also { reportFailure(sql, it) }
 
     private suspend fun executeUpdateOnce(sql: String): QueryResult = withContext(Dispatchers.IO) {
         val conn = activeConnection ?: return@withContext QueryResult.Error("No active connection")
@@ -422,3 +442,6 @@ sealed class QueryResult {
     data class UpdateSuccess(val affectedRows: Int) : QueryResult()
     data class Error(val message: String) : QueryResult()
 }
+
+/** A failed statement: [message] is the verbatim driver/server error for exactly [sql]. */
+data class QueryFailure(val sql: String, val message: String)

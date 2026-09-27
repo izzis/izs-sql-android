@@ -91,6 +91,7 @@ import id.web.izs.sqlclient.ui.viewmodel.ConnectionViewModel
 import id.web.izs.sqlclient.ui.viewmodel.QueryViewModel
 import id.web.izs.sqlclient.ui.components.TypeLenPicker
 import id.web.izs.sqlclient.ui.viewmodel.UserPermissionViewModel
+import id.web.izs.sqlclient.util.QueryLogEntry
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.TableSql
 import id.web.izs.sqlclient.util.rememberCopyToClipboard
@@ -275,7 +276,7 @@ fun DatabaseBrowserScreen(
                 val browserQuery = when (activePanel) {
                     BrowserPanel.TABLE_INFO -> currentQuery
                     BrowserPanel.USERS -> userCurrentQuery
-                    BrowserPanel.HISTORY -> emptyList()
+                    BrowserPanel.HISTORY -> emptyList<QueryLogEntry>()
                 }
 
                 CurrentQueryBar(queries = browserQuery)

@@ -6,6 +6,8 @@ import id.web.izs.sqlclient.data.remote.MariaDbConnectionManager
 import id.web.izs.sqlclient.data.remote.QueryResult
 import id.web.izs.sqlclient.data.remote.model.ColumnInfo
 import id.web.izs.sqlclient.data.remote.model.IndexInfo
+import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,11 +34,21 @@ class TableStructureViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     fun loadStructure(database: String, table: String) {
-        _currentQuery.value = listOf("SHOW FULL COLUMNS FROM `$database`.`$table`")
+        _currentQuery.value = listOf(QueryLogEntry("SHOW FULL COLUMNS FROM `$database`.`$table`"))
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -87,7 +99,7 @@ class TableStructureViewModel @Inject constructor(
 
     private suspend fun loadCreateTable(database: String, table: String) {
         val sql = "SHOW CREATE TABLE `$database`.`$table`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 _createTable.value = result.rows.firstOrNull()?.getOrNull(1)?.toString()
@@ -99,7 +111,7 @@ class TableStructureViewModel @Inject constructor(
 
     private suspend fun loadIndexes(database: String, table: String) {
         val sql = "SHOW INDEX FROM `$database`.`$table`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 val indexMap = mutableMapOf<String, MutableList<Pair<String, Int>>>()

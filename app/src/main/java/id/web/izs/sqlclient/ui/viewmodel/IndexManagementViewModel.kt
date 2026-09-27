@@ -6,6 +6,8 @@ import id.web.izs.sqlclient.data.remote.MariaDbConnectionManager
 import id.web.izs.sqlclient.data.remote.QueryResult
 import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.data.remote.model.IndexInfo
+import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,8 +36,18 @@ class IndexManagementViewModel @Inject constructor(
     private val _operationSuccess = MutableStateFlow<String?>(null)
     val operationSuccess: StateFlow<String?> = _operationSuccess.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     /** Full page (re)entry — clears the query log. Loaders below only append. */
     fun resetQueryLog() {
@@ -43,7 +55,7 @@ class IndexManagementViewModel @Inject constructor(
     }
 
     fun loadIndexes(database: String, table: String) {
-        _currentQuery.value = _currentQuery.value + "SHOW INDEX FROM `$database`.`$table`"
+        _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW INDEX FROM `$database`.`$table`")
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -91,7 +103,7 @@ class IndexManagementViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val sql = "SHOW COLUMNS FROM `$database`.`$table`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _columns.value = result.rows.map { row ->
@@ -116,7 +128,7 @@ class IndexManagementViewModel @Inject constructor(
                 val uniqueStr = if (unique) "UNIQUE " else ""
                 val colList = columns.joinToString(", ") { "`$it`" }
                 val sql = "CREATE ${uniqueStr}INDEX `$name` ON `$database`.`$table` ($colList)"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)
@@ -141,7 +153,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "DROP INDEX `$name` ON `$database`.`$table`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)
@@ -166,7 +178,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` MODIFY COLUMN $columnDef"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)
@@ -191,7 +203,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` ADD COLUMN $columnDef"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)
@@ -216,7 +228,7 @@ class IndexManagementViewModel @Inject constructor(
             _error.value = null
             try {
                 val sql = "ALTER TABLE `$database`.`$table` DROP COLUMN `$columnName`"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)

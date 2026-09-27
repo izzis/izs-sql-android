@@ -54,6 +54,7 @@
 │       │       ├── ExportUtil.kt
 │       │       ├── ProfileCrypto.kt            # PBKDF2 120k + AES-256-CBC Salted__ (profile backup, master password not stored)
 │       │       ├── SqlUtil.kt                  # stripLeading/isWriteQuery (default-deny)/shouldApplyLimit (SELECT only)/buildLimitedSql
+│       │       ├── QueryLog.kt                 # QueryLogEntry(sql, error) + withQueryError (query-log line + server error)
 │       │       ├── Clipboard.kt                # rememberCopyToClipboard via LocalClipboard (copy + optional toast)
 │       │       ├── DbeaverImport.kt            # MySQL/MariaDB connection import from .dbp/data-sources.json + credentials-config.json decryption
 │       │       └── ThemeManager.kt
@@ -111,7 +112,7 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 `CurrentQueryBar` is the `Scaffold.bottomBar` on `Browser`, `SQLEditor`, `InlineDataEditor`, `TableStructure`, `UserManagement`, `UserPrivilegeDetailScreen`. Contract:
 
-- `currentQuery: List<String>` — **all queries** executed to render the current page state. Every ViewModel appends (`+=`) each SQL before execution; refresh/reset clears the list. Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy.
+- `currentQuery: List<QueryLogEntry>` — **all queries** executed to render the current page state (`QueryLogEntry(sql, error)` lives in `util/QueryLog.kt`). Every ViewModel appends (`+= QueryLogEntry(sql)`) each SQL before execution; refresh/reset clears the list. Collapsed = "Query log (N)" pill; expanded = numbered per-line list (most recent highlighted), word-wrapped, selectable monospace + copy. A **failed** line is drawn in red with the verbatim driver/server error shown underneath the same log number (`QueryLogEntry.error`, filled from `MariaDbConnectionManager.queryFailures` — the message is never rewritten).
 - `rememberSaveable` for collapse state, `windowInsetsPadding(navigationBars)` so it never sits under gesture nav after `enableEdgeToEdge()`.
 - **No hidden queries**: every `connectionManager.executeQuery` call (including background reads like `SHOW FULL COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, `information_schema` size queries, `SHOW GRANTS`, and `FLUSH PRIVILEGES`) is reflected in the list. This ensures the query log matches the server's `general_log`.
 
@@ -122,7 +123,9 @@ System schemas `information_schema / performance_schema / sys` are always hidden
 
 ### Query execution
 
-`MariaDbConnectionManager.executeQuery(sql): QueryResult` (`Success(columns, rows)` | `UpdateSuccess` | `Error(message)`) — single JDBC `Connection`, `Properties { connectTimeout 8000, socketTimeout 30000, useSSL/trustServerCertificate, queryTimeout 30s }`, `StrictHostKeyChecking=no` for SSH. `_currentQuery: MutableStateFlow<List<String>>` / `_query` / `_error` / `_lastQueryDurationMs` are the ViewModel contracts driving `CurrentQueryBar` (query log), error Snackbars and the status bar. Every query that hits the server must be appended to `_currentQuery` before execution.
+`MariaDbConnectionManager.executeQuery(sql): QueryResult` (`Success(columns, rows)` | `UpdateSuccess` | `Error(message)`) — single JDBC `Connection`, `Properties { connectTimeout 8000, socketTimeout 30000, useSSL/trustServerCertificate, queryTimeout 30s }`, `StrictHostKeyChecking=no` for SSH. `_currentQuery: MutableStateFlow<List<QueryLogEntry>>` / `_query` / `_error` / `_lastQueryDurationMs` are the ViewModel contracts driving `CurrentQueryBar` (query log), error Snackbars and the status bar. Every query that hits the server must be appended to `_currentQuery` before execution.
+
+**Query failures → red log line.** Every execute call that returns `QueryResult.Error` also publishes `QueryFailure(sql, message)` on `MariaDbConnectionManager.queryFailures` (`SharedFlow`, message verbatim from driver/server). Each ViewModel collects it in `init` and calls `withQueryError(sql, message)`, which decorates the matching log entry — a failed statement then shows up red under its own query-log number with the server message beneath it, with no per-error-site wiring. A failure whose SQL is not in that VM's log is ignored.
 
 **Read guard `LIMIT`:** `util/SqlUtil.buildLimitedSql(sql, limit)` / `shouldApplyLimit(sql)` auto-appends `LIMIT` **only for `SELECT`** (stripping leading `--/#//* */`). This prevents accidental `SELECT * FROM large_table` without `LIMIT` from loading 100k rows. `WRITE` queries are never limited — `DataEditorViewModel.getCustomQueryPreview()` guarantees the dialog preview equals the SQL sent to `general_log`. `SHOW`/`DESCRIBE` etc. are not limited (`maxRows=1001` in the driver already caps them). `DataEditorViewModel.executeWithLimit` and `loadMore` respect the same guard.
 

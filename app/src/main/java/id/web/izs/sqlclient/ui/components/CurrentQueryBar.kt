@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Stop
@@ -41,18 +42,21 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.web.izs.sqlclient.util.QueryLogEntry
 import id.web.izs.sqlclient.util.rememberCopyToClipboard
 
 @Composable
 fun CurrentQueryBar(
-    queries: List<String>,
+    queries: List<QueryLogEntry>,
+    modifier: Modifier = Modifier,
     isExecuting: Boolean = false,
     onCancel: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     // show bar even when executing but no queries yet (e.g. immediate after execute)
     if (queries.isEmpty() && !isExecuting) return
-    val lastQuery = queries.lastOrNull() ?: ""
+    val lastEntry = queries.lastOrNull()
+    val lastQuery = lastEntry?.sql ?: ""
+    val lastFailed = lastEntry?.error != null
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     val copyToClipboard = rememberCopyToClipboard()
@@ -102,7 +106,11 @@ fun CurrentQueryBar(
                         Text(
                             text = "  ·  ${lastQuery.replace('\n', ' ').take(80)}${if (lastQuery.length > 80) "…" else ""}",
                             style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            color = if (lastFailed) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
@@ -119,7 +127,7 @@ fun CurrentQueryBar(
                     } else {
                         IconButton(
                             onClick = {
-                                copyToClipboard(queries.joinToString(";\n"), "Copied")
+                                copyToClipboard(queries.joinToString(";\n") { it.sql }, "Copied")
                             },
                             modifier = Modifier.size(24.dp)
                         ) {
@@ -155,7 +163,7 @@ fun CurrentQueryBar(
                                 Text(
                                     text = lastQuery,
                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = if (lastFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -169,7 +177,10 @@ fun CurrentQueryBar(
                             items(queries.size) { idx ->
                                 val originalIdx = queries.lastIndex - idx
                                 val isLast = originalIdx == queries.lastIndex
-                                val sql = queries[originalIdx]
+                                val entry = queries[originalIdx]
+                                val sql = entry.sql
+                                val error = entry.error
+                                val failed = error != null
 
                                 if (idx > 0) {
                                     HorizontalDivider(
@@ -186,17 +197,46 @@ fun CurrentQueryBar(
                                     Text(
                                         text = "${originalIdx + 1}",
                                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                                        color = when {
+                                            failed -> MaterialTheme.colorScheme.error
+                                            isLast -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        fontWeight = if (isLast || failed) FontWeight.Bold else FontWeight.Normal,
                                         modifier = Modifier.width(20.dp).padding(top = 2.dp)
                                     )
                                     SelectionContainer(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = sql,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                            color = if (isLast) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = if (isLast) FontWeight.Medium else FontWeight.Normal
-                                        )
+                                        Column {
+                                            Text(
+                                                text = sql,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                                color = when {
+                                                    failed -> MaterialTheme.colorScheme.error
+                                                    isLast -> MaterialTheme.colorScheme.primary
+                                                    else -> MaterialTheme.colorScheme.onSurface
+                                                },
+                                                fontWeight = if (isLast) FontWeight.Medium else FontWeight.Normal
+                                            )
+                                            if (error != null) {
+                                                Row(
+                                                    modifier = Modifier.padding(top = 2.dp),
+                                                    verticalAlignment = Alignment.Top
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ErrorOutline,
+                                                        contentDescription = "Error",
+                                                        modifier = Modifier.size(12.dp).padding(top = 2.dp),
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = error,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

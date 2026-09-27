@@ -9,6 +9,8 @@ import id.web.izs.sqlclient.data.remote.QueryResult
 import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.CellDisplay
+import id.web.izs.sqlclient.util.QueryLogEntry
+import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,8 +69,18 @@ class DataEditorViewModel @Inject constructor(
     private val _hasLoaded = MutableStateFlow(false)
     val hasLoaded: StateFlow<Boolean> = _hasLoaded.asStateFlow()
 
-    private val _currentQuery = MutableStateFlow<List<String>>(emptyList())
-    val currentQuery: StateFlow<List<String>> = _currentQuery.asStateFlow()
+    private val _currentQuery = MutableStateFlow<List<QueryLogEntry>>(emptyList())
+    val currentQuery: StateFlow<List<QueryLogEntry>> = _currentQuery.asStateFlow()
+
+    init {
+        // Failures come straight from the connection manager and are attached to the
+        // query-log line they belong to (CurrentQueryBar draws that line in red).
+        viewModelScope.launch {
+            connectionManager.queryFailures.collect { failure ->
+                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            }
+        }
+    }
 
     // Quick WHERE filter
     private val _whereInput = MutableStateFlow("")
@@ -178,7 +190,7 @@ class DataEditorViewModel @Inject constructor(
 
     private fun refreshCurrentQueryPreview() {
         val sqls = buildPendingSqls(currentDatabase, currentTable)
-        _currentQuery.value = if (sqls.isNotEmpty()) sqls else listOf(_query.value)
+        _currentQuery.value = if (sqls.isNotEmpty()) sqls.map { QueryLogEntry(it) } else listOf(QueryLogEntry(_query.value))
     }
 
     private fun formatWhere(pairs: List<Pair<String, Any?>>): String {
@@ -241,7 +253,7 @@ class DataEditorViewModel @Inject constructor(
             try {
                 val executed = mutableListOf<String>()
                 for (sql in sqls) {
-                    _currentQuery.value = _currentQuery.value + sql
+                    _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                     when (val r = connectionManager.executeQuery(sql)) {
                         is QueryResult.Error -> { _error.value = r.message; return@launch }
                         else -> executed.add(sql)
@@ -291,7 +303,7 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         val sql = buildBrowseSql()
         _query.value = sql
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -333,7 +345,7 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         val sql = buildBrowseSql()
         _query.value = sql
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -368,7 +380,7 @@ class DataEditorViewModel @Inject constructor(
         _rows.value = emptyList()
         val sql = buildBrowseSql()
         _query.value = sql
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
@@ -401,9 +413,9 @@ class DataEditorViewModel @Inject constructor(
             currentOffset = 0
             _selectedRows.value = emptySet()
             _rows.value = emptyList()
-        val sql = buildBrowseSql()
-        _query.value = sql
-        _currentQuery.value = _currentQuery.value + sql
+            val sql = buildBrowseSql()
+            _query.value = sql
+            _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
             viewModelScope.launch {
                 _isLoading.value = true
                 _error.value = null
@@ -453,7 +465,7 @@ class DataEditorViewModel @Inject constructor(
 
         val sql = "SELECT * FROM $database.$table LIMIT ${_dataLimit.value}"
         _query.value = sql
-        _currentQuery.value = listOf(sql)
+        _currentQuery.value = listOf(QueryLogEntry(sql))
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -508,7 +520,7 @@ class DataEditorViewModel @Inject constructor(
             val t0 = SystemClock.elapsedRealtime()
             try {
                 val limitedSql = SqlUtil.buildLimitedSql(sql, _dataLimit.value)
-                _currentQuery.value = listOf(limitedSql)
+                _currentQuery.value = listOf(QueryLogEntry(limitedSql))
                 executeWithLimit(limitedSql)
             } catch (e: Exception) {
                 _error.value = "Query failed: ${e.message}"
@@ -543,7 +555,7 @@ class DataEditorViewModel @Inject constructor(
                         "$baseQuery LIMIT $limit OFFSET $currentOffset"
                     }
                 }
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.Success -> {
                         _rows.value = _rows.value + result.rows
@@ -586,7 +598,7 @@ class DataEditorViewModel @Inject constructor(
         pkColumns = emptyList()
 
         val sql = "SHOW FULL COLUMNS FROM `$database`.`$table`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         when (val result = connectionManager.executeQuery(sql)) {
             is QueryResult.Success -> {
                 val pks = mutableListOf<Pair<Int, String>>()
@@ -624,7 +636,7 @@ class DataEditorViewModel @Inject constructor(
                 val columns = values.keys.joinToString(", ") { "`$it`" }
                 val vals = values.values.joinToString(", ") { formatSqlValue(it) }
                 val sql = "INSERT INTO `$database`.`$table` ($columns) VALUES ($vals)"
-                _currentQuery.value = _currentQuery.value + sql
+                _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
                 when (val result = connectionManager.executeQuery(sql)) {
                     is QueryResult.UpdateSuccess -> {
                         recordWrite(sql, database)
@@ -691,7 +703,7 @@ class DataEditorViewModel @Inject constructor(
 
     suspend fun fetchColumnsForAutocomplete(database: String, table: String): List<String>? {
         val sql = "SHOW COLUMNS FROM `$database`.`$table`"
-        _currentQuery.value = _currentQuery.value + sql
+        _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         return try {
             when (val result = connectionManager.executeQueryIfFree(sql)) {
                 is QueryResult.Success -> result.rows.mapNotNull { it[0]?.toString() }
