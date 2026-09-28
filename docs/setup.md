@@ -104,7 +104,7 @@ cd /path/to/izs-sql-android
 # Option 1: create local.properties (most reliable)
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 cat local.properties
-# expected: sdk.dir=/home/al/Android/Sdk  (adjust to your actual path)
+# expected: sdk.dir=~/Android/Sdk  (adjust to your actual path)
 
 # Option 2: env var fallback (works if local.properties is absent)
 export ANDROID_HOME="$HOME/Android/Sdk"

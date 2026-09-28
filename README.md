@@ -60,4 +60,7 @@ Dari nol (install JDK/SDK): [docs/setup.md](docs/setup.md).
 
 ## License
 
-No license published yet. Treat this repo as **all rights reserved** until a `LICENSE` file is added — do not redistribute built APKs without permission.
+[MIT](LICENSE) — free to use, modify, and redistribute, with attribution.
+
+DBeaver import support (`DbeaverImport.kt`) reimplements DBeaver's project
+format (Apache-2.0); see the file header for details.
