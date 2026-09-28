@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -36,9 +38,24 @@ class MariaDbConnectionManager @Inject constructor(
     private var lastProfile: ConnectionProfileEntity? = null
     /** Serializes auto-reconnects so concurrent failing queries heal the session once. */
     private val reconnectMutex = Mutex()
+    /**
+     * Endpoint of the live session — through the SSH tunnel's local port when one is open,
+     * otherwise the profile host. Lets a probe reach exactly where the JDBC socket points.
+     */
+    @Volatile private var probeHost: String? = null
+    @Volatile private var probePort: Int = 0
+    /** Wall-clock of the last completed round trip; drives the stale-session pre-flight. */
+    @Volatile private var lastQueryAtMs: Long = 0L
 
     companion object {
         private const val TAG = "MariaDbConn"
+        /** Hard bound on a single reachability probe — see [isRouteReachable]. */
+        private const val PROBE_TIMEOUT_MS = 500
+        /** Probes before declaring the route dead; a lone lost SYN must not cost the session. */
+        private const val PROBE_ATTEMPTS = 2
+        private const val PROBE_RETRY_GAP_MS = 150L
+        /** Idle time after which the next statement re-checks the route before running. */
+        private const val STALE_MS = 5_000L
         init {
             try {
                 Class.forName("org.mariadb.jdbc.Driver")
@@ -123,6 +140,11 @@ class MariaDbConnectionManager @Inject constructor(
 
             activeConnection = connection
             activeProfileId = profile.id
+            // Probe endpoint: the tunnel's local port when one is open, else the real host.
+            probeHost = actualHost
+            probePort = actualPort
+            // The handshake just proved the route works — don't probe again immediately.
+            lastQueryAtMs = System.currentTimeMillis()
             // Remember for silent auto-reconnect. Skip the ephemeral test profile
             // (ConnectionRepository.testConnection id 999999) so a Test never hijacks it.
             if (profile.id != 999999L) lastProfile = profile
@@ -217,6 +239,7 @@ class MariaDbConnectionManager @Inject constructor(
 
     /** Low-priority query that never blocks UI-critical queries: skips if mutex is busy. */
     suspend fun executeQueryIfFree(sql: String): QueryResult? = withContext(Dispatchers.IO) {
+        healIfStale()
         if (!queryMutex.tryLock()) return@withContext null
         var stmt: java.sql.Statement? = null
         var rs: java.sql.ResultSet? = null
@@ -254,7 +277,12 @@ class MariaDbConnectionManager @Inject constructor(
             cancelRequested.set(false)
             queryMutex.unlock()
         }
-    }.also { result -> if (result != null) reportFailure(sql, result) }
+    }.also { result ->
+        if (result != null) {
+            if (result !is QueryResult.Error) lastQueryAtMs = System.currentTimeMillis()
+            reportFailure(sql, result)
+        }
+    }
 
     /**
      * Executes a query, self-healing the session when the connection died underneath us
@@ -263,6 +291,7 @@ class MariaDbConnectionManager @Inject constructor(
      * only for reads — re-running a write could double-apply it.
      */
     suspend fun executeQuery(sql: String): QueryResult = withContext(Dispatchers.IO) {
+        healIfStale()
         val first = executeQueryOnce(sql)
         if (first is QueryResult.Error) {
             val dead = isDeadConnectionError(first.message)
@@ -275,7 +304,11 @@ class MariaDbConnectionManager @Inject constructor(
             }
         }
         first
-    }.also { reportFailure(sql, it) }
+    }.also { result ->
+        // A completed round trip proves the session was live — restart the staleness window.
+        if (result !is QueryResult.Error) lastQueryAtMs = System.currentTimeMillis()
+        reportFailure(sql, result)
+    }
 
     private suspend fun executeQueryOnce(sql: String): QueryResult = withContext(Dispatchers.IO) {
         val conn = activeConnection ?: return@withContext QueryResult.Error("No active connection")
@@ -353,10 +386,77 @@ class MariaDbConnectionManager @Inject constructor(
         }
     }
 
+    /**
+     * True when a fresh TCP connect to the current endpoint answers — through the SSH tunnel's
+     * local port when one is open, otherwise straight to the profile host.
+     *
+     * Bounded: worst case [PROBE_ATTEMPTS] × [PROBE_TIMEOUT_MS] plus one gap, far below the 30s
+     * the driver would burn. Deliberately not `Connection.isValid`: with a configured
+     * socketTimeout, driver 2.4.4 ignores isValid's own timeout argument (`AbstractQueryProtocol
+     * .isValid` only lowers SO_TIMEOUT when the field is 0), so `isValid(1)` would block for the
+     * full 30s on a blackholed socket. A live route answers in one RTT; the timeout is only the
+     * ceiling for a dead one.
+     *
+     * Two attempts because callers act on a false negative by tearing the session down — a lone
+     * lost SYN must not cost a working connection.
+     */
+    private fun isRouteReachable(): Boolean {
+        val host = probeHost ?: return false
+        val port = probePort
+        if (port !in 1..65535) return false
+        repeat(PROBE_ATTEMPTS) { attempt ->
+            val reachable = try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(host, port), PROBE_TIMEOUT_MS)
+                }
+                true
+            } catch (_: Exception) {
+                false
+            }
+            if (reachable) return true
+            if (attempt == 0) Thread.sleep(PROBE_RETRY_GAP_MS)
+        }
+        return false
+    }
+
+    /**
+     * Reconnects BEFORE the next statement when the session has sat idle long enough that the
+     * route may have silently died (NAT idle drop, wifi→cellular handoff, dead tunnel). Without
+     * this the statement itself discovers the dead socket and blocks on socketTimeout first.
+     *
+     * Never runs while a statement is in flight — that statement's own error path heals it.
+     */
+    private suspend fun healIfStale() {
+        if (activeConnection == null) return
+        if (queryMutex.isLocked) return
+        if (System.currentTimeMillis() - lastQueryAtMs < STALE_MS) return
+        if (isRouteReachable()) return
+        Log.d(TAG, "Stale session unreachable — reconnecting before the next statement")
+        reconnectSilently()
+    }
+
+    /**
+     * App-resume hook: heal the session if it or its route died while backgrounded, so the
+     * first statement after returning doesn't have to discover the failure itself. No-op when
+     * there is no session to heal or one is mid-flight.
+     */
+    suspend fun ensureConnected() = withContext(Dispatchers.IO) {
+        if (activeConnection == null) return@withContext
+        if (queryMutex.isLocked) return@withContext
+        if (isConnected()) return@withContext
+        Log.d(TAG, "Session unreachable on resume — reconnecting")
+        reconnectSilently()
+    }
+
+    /**
+     * True when a session object is open AND its route still answers. Blocking (one bounded
+     * probe) — call from a background dispatcher.
+     */
     fun isConnected(): Boolean {
+        val conn = activeConnection ?: return false
         return try {
-            activeConnection?.isValid(3) == true
-        } catch (e: Exception) {
+            !conn.isClosed && isRouteReachable()
+        } catch (_: Exception) {
             false
         }
     }
@@ -369,8 +469,11 @@ class MariaDbConnectionManager @Inject constructor(
 
     /**
      * True when [message] looks like a dead session (closed/reset/link failure/socket
-     * timeout), confirmed with a live ping — a slow query can trip SO_TIMEOUT while the
-     * session itself is still usable, and then no reconnect is needed.
+     * timeout), confirmed against the driver's closed flag and the route — a slow query can
+     * trip SO_TIMEOUT while the session itself is still usable, and then no reconnect is needed.
+     *
+     * The closed flag is free and definitive for reset/broken pipe; the route probe covers the
+     * blackholed case. Never `Connection.isValid` — see [isRouteReachable] for why.
      */
     private fun isDeadConnectionError(message: String?): Boolean {
         if (message == null) return false
@@ -384,7 +487,13 @@ class MariaDbConnectionManager @Inject constructor(
             || m.contains("read timed out")
             || m.contains("socket timeout")
         if (!sniff) return false
-        return try { activeConnection?.isValid(2) != true } catch (_: Exception) { true }
+        val conn = activeConnection
+        if (conn == null) return true
+        return try {
+            if (conn.isClosed) true else !isRouteReachable()
+        } catch (_: Exception) {
+            true
+        }
     }
 
     /**
@@ -416,6 +525,10 @@ class MariaDbConnectionManager @Inject constructor(
             sshTunnelManager.closeTunnel()
         }
         activeProfileId = null
+        // No session → no endpoint to probe and nothing that counts as a live round trip.
+        probeHost = null
+        probePort = 0
+        lastQueryAtMs = 0L
         // Manual disconnect: forget the profile so no auto-reconnect fires afterwards.
         lastProfile = null
     }
