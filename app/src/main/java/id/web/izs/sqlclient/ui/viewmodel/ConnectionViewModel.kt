@@ -153,7 +153,9 @@ class ConnectionViewModel @Inject constructor(
                 is ConnectionResult.Success -> {
                     _connectionMessage.value = "Connected!"
                     _connectionState.value = ConnectionState.Connected(profile)
-                    _sessionLocked.value = profile.isReadonly
+                    // Never lower the lock here: a manual top-bar lock must survive,
+                    // the profile's read-only switch only ever raises it.
+                    if (profile.isReadonly) _sessionLocked.value = true
                 }
                 is ConnectionResult.Error -> {
                     _connectionMessage.value = ""
@@ -173,7 +175,9 @@ class ConnectionViewModel @Inject constructor(
             _isReconnecting.value = true
             when (connectionRepository.connect(profile)) {
                 is ConnectionResult.Success -> {
-                    _sessionLocked.value = profile.isReadonly
+                    // Same rule as connect(): a manual top-bar lock must survive a
+                    // reconnect, the profile's read-only switch only ever raises it.
+                    if (profile.isReadonly) _sessionLocked.value = true
                     _isReconnecting.value = false
                     _reconnectMessage.value = "Reconnected"
                 }
