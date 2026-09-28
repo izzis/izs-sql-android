@@ -812,6 +812,7 @@ private fun UsersPanel(
                     UserCard(
                         userInfo = user,
                         isSelected = false,
+                        isLocked = isLocked,
                         onClick = {
                             userViewModel.loadGrants(user.user, user.host)
                             onOpenUserDetail(user.user, user.host)
@@ -873,7 +874,8 @@ private fun UserCard(
     userInfo: UserInfo,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    isLocked: Boolean = false
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     androidx.compose.material3.Card(
@@ -890,7 +892,7 @@ private fun UserCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(text = "${userInfo.user}@${userInfo.host}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
-                IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(16.dp)) }
+                IconButton(onClick = { if (!isLocked) showDeleteConfirm = true }, enabled = !isLocked, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Close, contentDescription = "Delete", modifier = Modifier.size(16.dp)) }
             }
 
         }

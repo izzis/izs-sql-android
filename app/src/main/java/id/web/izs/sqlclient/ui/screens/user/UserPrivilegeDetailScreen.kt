@@ -214,8 +214,8 @@ fun UserPrivilegeDetailScreen(
         ) {
             ReconnectBanner(message = reconnectMessage)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { showRenameDialog = true }) { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Rename") }
-                TextButton(onClick = { showPasswordDialog = true }) { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Password") }
+                TextButton(enabled = !isLocked, onClick = { showRenameDialog = true }) { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Rename") }
+                TextButton(enabled = !isLocked, onClick = { showPasswordDialog = true }) { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Password") }
             }
             if (isLoading && grants.isEmpty()) {
                 Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp)) }
