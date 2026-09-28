@@ -8,9 +8,9 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 
 | Document | Contents |
 |---|---|
-| [docs/setup.md](docs/setup.md) | Requirements, build APK dari nol, konfigurasi SDK |
-| [docs/architecture.md](docs/architecture.md) | Struktur project, arsitektur, key concepts, navigasi, security |
-| [docs/write-safety.md](docs/write-safety.md) | Aturan + riwayat audit write-query (wajib baca sebelum ubah query flow) |
+| [docs/setup.md](docs/setup.md) | Requirements, build an APK from scratch, SDK configuration |
+| [docs/architecture.md](docs/architecture.md) | Project structure, architecture, key concepts, navigation, security |
+| [docs/write-safety.md](docs/write-safety.md) | Rules + write-query audit history (must read before touching the query flow) |
 | [docs/development.md](docs/development.md) | Workflow, testing, troubleshooting, roadmap |
 
 ## Features
@@ -31,7 +31,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 - **Profile backup (encrypted)** — SAF `.enc` (`PBKDF2 120k + AES-256-CBC`), per-duplicate Replace/Skip/Insert.
 - **Import from DBeaver** — `.dbp` / `data-sources.json` (MySQL/MariaDB only).
 
-Detail tiap fitur: [docs/architecture.md](docs/architecture.md).
+Per-feature details: [docs/architecture.md](docs/architecture.md).
 
 ## Quick start
 
@@ -40,23 +40,23 @@ Detail tiap fitur: [docs/architecture.md](docs/architecture.md).
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Dari nol (install JDK/SDK): [docs/setup.md](docs/setup.md).
+From scratch (install JDK/SDK): [docs/setup.md](docs/setup.md).
 
 ## AI session bootstrap
 
 > `opencode.json` declares `instructions: ["README.md"]` so this file is auto-loaded.
 
-1. **Baca file ini**, lalu sesuai kebutuhan:
+1. **Read this file first**, then go to what you need:
    - Setup/build — [docs/setup.md](docs/setup.md)
-   - Arsitektur/VM/routes — [docs/architecture.md](docs/architecture.md)
-   - Write flow & audit — **[docs/write-safety.md](docs/write-safety.md)** (wajib sebelum menyentuh query)
+   - Architecture/VM/routes — [docs/architecture.md](docs/architecture.md)
+   - Write flow & audit — **[docs/write-safety.md](docs/write-safety.md)** (required before touching the query flow)
    - Workflow/test/troubleshoot — [docs/development.md](docs/development.md)
-2. **Prefer `Glob`/`Grep`** untuk discovery; peta struktur ada di [docs/architecture.md](docs/architecture.md#project-structure).
-3. **Write query safety**: semua write WAJIB preview + confirm dialog + lock gate di ViewModel. Klasifikasi `SqlUtil.isWriteQuery()` **default-deny** (`FLUSH` satu-satunya exception by-design). Refresh tidak boleh eksekusi write. Detail: [docs/write-safety.md](docs/write-safety.md).
-4. **Query log**: setiap query ke server harus di-append ke `_currentQuery` sebelum `executeQuery()` — no hidden queries. Query gagal → barisnya merah + pesan error dari server (verbatim) di bawah nomor log yang sama (`QueryLogEntry.error`, dari `connectionManager.queryFailures`). Query yang **staged** (belum dikirim) → baris amber + label `staged`, hilang saat Discard, berubah jadi normal saat dieksekusi. Log **clear hanya saat pindah halaman** / tombol clear di bar — refresh tidak menghapus log.
-5. **Jangan persist `sessionLocked`** — live state `ConnectionViewModel` saja.
-6. **Testing gate**: fitur query baru WAJIB tambah/update test (`SqlUtilTest`, 22 tests) dan jaga CI hijau.
-7. `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push butuh approval.
+2. **Prefer `Glob`/`Grep`** for discovery; the structure map lives in [docs/architecture.md](docs/architecture.md#project-structure).
+3. **Write query safety**: every write MUST have a preview + confirm dialog + lock gate in the ViewModel. `SqlUtil.isWriteQuery()` classification is **default-deny** (`FLUSH` is the only by-design exception). Refresh must never execute a write. Details: [docs/write-safety.md](docs/write-safety.md).
+4. **Query log**: every query sent to the server must be appended to `_currentQuery` before `executeQuery()` — no hidden queries. A failed query → red row + the server error message (verbatim) under the same log number (`QueryLogEntry.error`, from `connectionManager.queryFailures`). A **staged** query (not yet sent) → amber row + `staged` label, removed on Discard, flips to a normal row once executed. The log **clears only on page change** / the bar's clear button — refresh never clears it.
+5. **Never persist `sessionLocked`** — live state on `ConnectionViewModel` only.
+6. **Testing gate**: new query features MUST add/update tests (`SqlUtilTest`, 22 tests) and keep CI green.
+7. `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval.
 
 ## License
 

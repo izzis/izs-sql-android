@@ -35,7 +35,7 @@ Tips:
 
 ## Testing
 
-JVM unit tests run on every push/PR via `.github/workflows/ci.yml` (`JDK 17` + `./gradlew test` + `assembleDebug`).
+No CI workflow runs on push — run JVM unit tests locally (`JDK 17` + `./gradlew test` + `assembleDebug`).
 
 ```bash
 ./gradlew test                # JVM unit tests (SqlUtil + query logic)
@@ -45,7 +45,7 @@ JVM unit tests run on every push/PR via `.github/workflows/ci.yml` (`JDK 17` + `
 
 Current coverage (gate for all query features):
 - `util/SqlUtilTest.kt` — 22 tests: `stripLeading` (plain/line/block/mixed), `isWriteQuery` (singles, reads, default-deny unknown-is-write incl. `REPLACE/CALL/SET/BEGIN/KILL/LOAD`, `FLUSH`-is-safe, `SELECT INTO OUTFILE/FOR UPDATE` are write, `INSERTINTO` typo is write, comments leading, multi `SELECT 1; DROP`, case-insensitive), `shouldApplyLimit` (SELECT true, WRITE/SHOW false, multi-write false), `buildLimitedSql` (SELECT without LIMIT -> +200, WRITE/SHOW never +LIMIT, bulk `UPDATE 10k` stays unlimited, `preview == general_log`). **CI fails if `isWriteQuery`/`shouldApplyLimit` regresses.**
-- CI workflow `ci.yml` is the gate: any new feature that sends SQL to server (new `WRITE` prefix, new `SELECT` guard, new builder) **must** add/update `SqlUtilTest` (or new `*Test.kt`) and keep `gradlew test` green.
+- Local `gradlew test` is the gate: any new feature that sends SQL to server (new `WRITE` prefix, new `SELECT` guard, new builder) **must** add/update `SqlUtilTest` (or new `*Test.kt`) and keep `gradlew test` green.
 - `util/QueryLogTest.kt` — 7 tests: `QueryLogEntry` default has no error, `withQueryError` marks the matching line (last one wins for repeated SQL), unknown SQL / empty log are no-ops, previous message is replaced, input list is not mutated. **Fails if error-to-log-line matching regresses.**
 
 Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEditorViewModel` staging `buildPendingSqls` grouping. Done: `CredentialCrypto` AES-GCM round-trip/wrong-key/tamper tests (`CredentialCryptoTest`, 7 cases) after the Keystore migration.
@@ -69,7 +69,7 @@ Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEdi
 
 ## Known issues & roadmap
 
-**Alpha gaps (shipped as-is, PRs welcome):**
+**Alpha gaps (shipped as-is):**
 
 - Room `v3` `fallbackToDestructiveMigration` — no migration planned (bumping version will drop `connection_profiles` / `query_history`; acceptable for internal alpha, reinstall required).
 - SSH `StrictHostKeyChecking=no`; no known-hosts UI.
@@ -85,7 +85,3 @@ Planned: `PrivilegeResolver.parseGrants`, `SshTunnelManager` lifecycle, `DataEdi
 ## TODO — Unimplemented features
 
 > Moved to issue [#3](https://github.com/izzis/izs-sql-android/issues/3) to keep the roadmap persistent and linkable. Contents: Export UI wiring, Insert Row trigger, Index Management route decision, and deferred multi-session support. (History Panel already ✅ done.)
-
-## Contributing
-
-PRs against `main` welcome. For larger changes please open an issue first. Commit messages: imperative, short subject + body with context — e.g. `fix(browser): privilege-filter sidebar cache bypass`.
