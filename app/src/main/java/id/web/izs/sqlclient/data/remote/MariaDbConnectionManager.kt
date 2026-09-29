@@ -36,6 +36,14 @@ class MariaDbConnectionManager @Inject constructor(
      * Cleared on manual disconnect so we never reconnect behind the user's back.
      */
     private var lastProfile: ConnectionProfileEntity? = null
+    /**
+     * Database this session selected via USE. The default database lives in the *session*,
+     * not in the app: a fresh JDBC connection starts with none, so every reconnect has to
+     * re-select it or statements without a qualifier fail with 1046 "No database selected".
+     * Kept across a same-profile reconnect; reset when connect() switches profile, because
+     * that schema may not exist on the new server.
+     */
+    private var sessionDatabase: String? = null
     /** Serializes auto-reconnects so concurrent failing queries heal the session once. */
     private val reconnectMutex = Mutex()
     /**
@@ -147,6 +155,15 @@ class MariaDbConnectionManager @Inject constructor(
             // (ConnectionRepository.testConnection id 999999) so a Test never hijacks it.
             if (profile.id != 999999L) lastProfile = profile
 
+            // Restore the session's schema on the brand-new connection. Skip the test profile:
+            // a Test must neither inherit the live session's schema nor overwrite it.
+            if (profile.id != 999999L) {
+                if (prevProfile?.id != profile.id) {
+                    sessionDatabase = profile.database?.takeIf { it.isNotBlank() }
+                }
+                sessionDatabase?.let { restoreSessionDatabase(it) }
+            }
+
             ConnectionResult.Success(connection)
         } catch (e: Error) {
             closeTunnelIfOpened()
@@ -183,6 +200,23 @@ class MariaDbConnectionManager @Inject constructor(
                 else -> "Unexpected error: $simple"
             }
             ConnectionResult.Error(if (raw.isBlank()) short else "$short\n$raw")
+        }
+    }
+
+    /** Records a USE that succeeded on the live session — see [sessionDatabase]. */
+    fun setSessionDatabase(database: String?) {
+        sessionDatabase = database
+    }
+
+    /**
+     * Re-selects [database] on a connection that was just opened. Runs inside [connect], so it
+     * is best effort and deliberately quiet: there is no query-log line here to attach a failure
+     * to, and a failed restore only costs the same 1046 the next statement reports anyway.
+     */
+    private suspend fun restoreSessionDatabase(database: String) {
+        when (val result = executeQueryOnce("USE `$database`")) {
+            is QueryResult.Error -> Log.w(TAG, "Could not restore schema `$database` — ${result.message}")
+            else -> Log.d(TAG, "Schema `$database` restored")
         }
     }
 
@@ -287,10 +321,22 @@ class MariaDbConnectionManager @Inject constructor(
      * (timeout/cancel drops the socket in driver 2.x, server wait_timeout, killed tunnel).
      * A dead session is reconnected silently; the statement itself is retried ONCE and
      * only for reads — re-running a write could double-apply it.
+     *
+     * A session that came back *alive* but without its default schema (1046 "No database
+     * selected") is healed by re-selecting [sessionDatabase] and retrying — writes included:
+     * 1046 is raised before the statement runs, so there is nothing to double-apply. This is
+     * what spares the user from backing out of the SQL editor just to re-trigger `USE`.
      */
     suspend fun executeQuery(sql: String): QueryResult = withContext(Dispatchers.IO) {
         healIfStale()
         val first = executeQueryOnce(sql)
+        if (first is QueryResult.Error && isNoDatabaseSelected(first.message)) {
+            sessionDatabase?.let { db ->
+                if (executeQueryOnce("USE `$db`") !is QueryResult.Error) {
+                    return@withContext executeQueryOnce(sql)
+                }
+            }
+        }
         if (first is QueryResult.Error) {
             val dead = isDeadConnectionError(first.message)
             if (first.message == "Cancelled" || dead) {
@@ -493,6 +539,14 @@ class MariaDbConnectionManager @Inject constructor(
             true
         }
     }
+
+    /**
+     * Server error 1046: the session has no default schema, so the statement was refused
+     * before anything ran. Matched on the message text because [QueryResult.Error] only
+     * carries that (the driver wraps it as "Query failed: <cause>").
+     */
+    private fun isNoDatabaseSelected(message: String?): Boolean =
+        message?.contains("no database selected", ignoreCase = true) == true
 
     /**
      * Reconnects using [lastProfile] without touching UI state or re-running any

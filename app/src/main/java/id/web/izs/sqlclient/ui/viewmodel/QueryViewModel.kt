@@ -166,12 +166,12 @@ class QueryViewModel @Inject constructor(
     fun useDatabase(database: String) {
         val sql = "USE `$database`"
         _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
+        // The schema this session is *meant* to be on, recorded before the attempt: a dead
+        // socket must not lose the target, or connect() would have nothing to re-select.
+        // Distinct from _currentDatabase, which is only ever the schema the server confirmed.
+        connectionManager.setSessionDatabase(database)
         viewModelScope.launch {
             try {
-                // Claim the schema only once the server actually switched: a failed USE must
-                // not label history/favourites with a database the connection never left.
-                // QueryResult.Error is already marked on the log line above by the
-                // queryFailures collector, so only a throw has to be reported here.
                 if (connectionManager.executeQuery(sql) !is QueryResult.Error) {
                     _currentDatabase = database
                 }
