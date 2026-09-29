@@ -48,6 +48,11 @@ class BrowserViewModel @Inject constructor(
     private val _tableSizes = MutableStateFlow<Map<String, String>>(emptyMap())
     val tableSizes: StateFlow<Map<String, String>> = _tableSizes
 
+    // Databases whose last SHOW TABLES failed. Kept separate from _tables so an empty
+    // list still means "really no tables" while these stay retryable on expand/refresh.
+    private val _tableLoadFailed = MutableStateFlow<Set<String>>(emptySet())
+    val tableLoadFailed: StateFlow<Set<String>> = _tableLoadFailed
+
     private val _expandedDatabases = MutableStateFlow<Set<String>>(emptySet())
     val expandedDatabases: StateFlow<Set<String>> = _expandedDatabases
 
@@ -272,6 +277,9 @@ class BrowserViewModel @Inject constructor(
         privilegeResolver.invalidate()
         _hasLoadedDatabases.value = false
         loadDatabases(force = true)
+        // Re-run SHOW TABLES for the expanded databases; ones already cached are skipped
+        // by the guard in requestTables, so only the failed (or never fetched) ones run.
+        _expandedDatabases.value.forEach { requestTables(it) }
     }
 
     private fun applyVisibleDatabases() {
@@ -293,7 +301,8 @@ class BrowserViewModel @Inject constructor(
             current.add(database)
         }
         _expandedDatabases.value = current
-        if (expanding && !_tables.value.containsKey(database) && !_loadingDatabases.value.contains(database)) {
+        val failed = _tableLoadFailed.value.contains(database)
+        if (expanding && (!_tables.value.containsKey(database) || failed) && !_loadingDatabases.value.contains(database)) {
             requestTables(database)
         }
     }
@@ -301,7 +310,7 @@ class BrowserViewModel @Inject constructor(
     fun selectDatabase(database: String) {
         _selectedDatabase.value = database
         _tableSearchQuery.value = ""
-        if (!_tables.value.containsKey(database)) {
+        if (!_tables.value.containsKey(database) || _tableLoadFailed.value.contains(database)) {
             requestTables(database)
         } else {
             // Tables cached — lazily populate sizes once per DB, then keep in cache for back
@@ -313,7 +322,8 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun requestTables(database: String) {
-        if (_tables.value.containsKey(database) || _loadingDatabases.value.contains(database)) return
+        val failed = _tableLoadFailed.value.contains(database)
+        if ((_tables.value.containsKey(database) && !failed) || _loadingDatabases.value.contains(database)) return
         _loadingDatabases.value = _loadingDatabases.value + database
         _isRefreshingTables.value = true
         viewModelScope.launch {
@@ -324,6 +334,7 @@ class BrowserViewModel @Inject constructor(
                         var tableNames = result.rows.map { it[0].toString() }
                         tableNames = privilegeResolver.filterTables(database, tableNames, _privilegeSet.value)
                         _tables.value = _tables.value + (database to tableNames)
+                        _tableLoadFailed.value = _tableLoadFailed.value - database
                         // Best-effort: populate sizes once per DB, then reuse cache on back
                         if (tableNames.isNotEmpty() && tableNames.none { _tableSizes.value.containsKey("$database.$it") }) {
                             refreshTableSizes(database)
@@ -335,18 +346,22 @@ class BrowserViewModel @Inject constructor(
                             _databases.value = _databases.value.filterNot { it.name == database }
                             applyVisibleDatabases()
                             _tables.value = _tables.value - database
+                            _tableLoadFailed.value = _tableLoadFailed.value - database
                         } else {
                             _error.value = msg
                             _tables.value = _tables.value + (database to emptyList())
+                            _tableLoadFailed.value = _tableLoadFailed.value + database
                         }
                     }
                     else -> {
                         _tables.value = _tables.value + (database to emptyList())
+                        _tableLoadFailed.value = _tableLoadFailed.value + database
                     }
                 }
             } catch (e: Exception) {
                 _error.value = "Failed to load tables: ${e.message}"
                 _tables.value = _tables.value + (database to emptyList())
+                _tableLoadFailed.value = _tableLoadFailed.value + database
             } finally {
                 _loadingDatabases.value = _loadingDatabases.value - database
                 _isRefreshingTables.value = false
@@ -537,6 +552,7 @@ class BrowserViewModel @Inject constructor(
         _columns.value = emptyMap()
         _indexes.value = emptyMap()
         _tableSizes.value = emptyMap()
+        _tableLoadFailed.value = emptySet()
         _expandedDatabases.value = emptySet()
         _expandedTables.value = emptySet()
         _selectedTable.value = null

@@ -392,6 +392,7 @@ fun DatabaseBrowserScreen(
                                     expandedDatabases = expandedDatabases,
                                     expandedTables = expandedTables,
                                     loadingDatabases = viewModel.loadingDatabases.collectAsState().value,
+                                    tableLoadFailed = viewModel.tableLoadFailed.collectAsState().value,
                                     searchQuery = searchQuery,
                                     users = users,
                                     onDatabaseClick = { db ->

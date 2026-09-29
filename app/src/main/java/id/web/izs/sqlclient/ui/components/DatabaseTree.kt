@@ -43,6 +43,8 @@ import id.web.izs.sqlclient.data.remote.model.DatabaseInfo
 import id.web.izs.sqlclient.data.remote.model.IndexInfo
 import id.web.izs.sqlclient.data.remote.model.UserInfo
 
+private enum class DbStatusKind { LOADING, EMPTY, FAILED }
+
 // Flattened rows so the tree is lazy per row: one database, table, folder, column or
 // index per item, instead of composing an entire database subtree inside one eager item.
 private sealed interface TreeRow {
@@ -52,7 +54,7 @@ private sealed interface TreeRow {
         override val rowKey: String get() = "db:$db"
     }
 
-    data class DbStatus(val db: String, val loading: Boolean) : TreeRow {
+    data class DbStatus(val db: String, val kind: DbStatusKind) : TreeRow {
         override val rowKey: String get() = "status:$db"
     }
 
@@ -93,6 +95,7 @@ fun DatabaseTree(
     expandedTables: Set<String>,
     modifier: Modifier = Modifier,
     loadingDatabases: Set<String> = emptySet(),
+    tableLoadFailed: Set<String> = emptySet(),
     searchQuery: String,
     users: List<UserInfo>,
     onDatabaseClick: (String) -> Unit,
@@ -117,7 +120,7 @@ fun DatabaseTree(
         }
     }
 
-    val treeRows = remember(filteredDatabases, expandedDatabases, tables, columns, indexes, expandedTables, loadingDatabases, searchQuery, isLocked) {
+    val treeRows = remember(filteredDatabases, expandedDatabases, tables, columns, indexes, expandedTables, loadingDatabases, tableLoadFailed, searchQuery, isLocked) {
         buildList {
             for (database in filteredDatabases) {
                 val name = database.name
@@ -132,8 +135,9 @@ fun DatabaseTree(
                 }
 
                 when {
-                    loadingDatabases.contains(name) -> add(TreeRow.DbStatus(name, loading = true))
-                    dbTables != null && dbTables.isEmpty() -> add(TreeRow.DbStatus(name, loading = false))
+                    loadingDatabases.contains(name) -> add(TreeRow.DbStatus(name, DbStatusKind.LOADING))
+                    tableLoadFailed.contains(name) -> add(TreeRow.DbStatus(name, DbStatusKind.FAILED))
+                    dbTables != null && dbTables.isEmpty() -> add(TreeRow.DbStatus(name, DbStatusKind.EMPTY))
                     else -> {}
                 }
                 if (!isLocked && dbTables != null && searchQuery.isBlank()) {
@@ -271,8 +275,8 @@ fun DatabaseTree(
                 }
 
                 is TreeRow.DbStatus -> {
-                    if (entry.loading) {
-                        Row(
+                    when (entry.kind) {
+                        DbStatusKind.LOADING -> Row(
                             modifier = Modifier.padding(start = 32.dp, top = 4.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -280,11 +284,18 @@ fun DatabaseTree(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Loading...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    } else {
-                        Text(
+
+                        DbStatusKind.EMPTY -> Text(
                             text = "No tables",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 32.dp, top = 4.dp, bottom = 4.dp)
+                        )
+
+                        DbStatusKind.FAILED -> Text(
+                            text = "Failed to load tables",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 32.dp, top = 4.dp, bottom = 4.dp)
                         )
                     }
