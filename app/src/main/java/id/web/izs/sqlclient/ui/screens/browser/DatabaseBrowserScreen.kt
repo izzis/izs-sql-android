@@ -124,6 +124,8 @@ fun DatabaseBrowserScreen(
     val tables by viewModel.tables.collectAsState()
     val columns by viewModel.columns.collectAsState()
     val indexes by viewModel.indexes.collectAsState()
+    val columnsFailed by viewModel.columnsFailed.collectAsState()
+    val indexesFailed by viewModel.indexesFailed.collectAsState()
     val tableSizes by viewModel.tableSizes.collectAsState()
     val expandedDatabases by viewModel.expandedDatabases.collectAsState()
     val expandedTables by viewModel.expandedTables.collectAsState()
@@ -393,6 +395,8 @@ fun DatabaseBrowserScreen(
                                     expandedTables = expandedTables,
                                     loadingDatabases = viewModel.loadingDatabases.collectAsState().value,
                                     tableLoadFailed = viewModel.tableLoadFailed.collectAsState().value,
+                                    columnsFailed = columnsFailed,
+                                    indexesFailed = indexesFailed,
                                     searchQuery = searchQuery,
                                     users = users,
                                     onDatabaseClick = { db ->
@@ -512,11 +516,15 @@ fun DatabaseBrowserScreen(
                                                         // Columns
                                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                                                             Text("Columns", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                                                            if (tableColumns == null) {
-                                                                Spacer(modifier = Modifier.width(8.dp))
-                                                                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                                                            } else {
+                                                            if (tableColumns != null) {
                                                                 Text(" (${tableColumns.size})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            } else {
+                                                                Spacer(modifier = Modifier.width(8.dp))
+                                                                if (columnsFailed.contains(key)) {
+                                                                    Text("failed to load", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                                                } else {
+                                                                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                                                }
                                                             }
                                                         }
                                                         tableColumns?.forEach { col ->
@@ -542,11 +550,15 @@ fun DatabaseBrowserScreen(
                                                         // Indexes
                                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                                                             Text("Indexes", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                                                            if (tableIndexes == null) {
-                                                                Spacer(modifier = Modifier.width(8.dp))
-                                                                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                                                            } else {
+                                                            if (tableIndexes != null) {
                                                                 Text(" (${tableIndexes.size})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                            } else {
+                                                                Spacer(modifier = Modifier.width(8.dp))
+                                                                if (indexesFailed.contains(key)) {
+                                                                    Text("failed to load", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                                                } else {
+                                                                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                                                }
                                                             }
                                                         }
                                                         tableIndexes?.forEach { idx ->

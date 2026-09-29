@@ -53,6 +53,14 @@ class BrowserViewModel @Inject constructor(
     private val _tableLoadFailed = MutableStateFlow<Set<String>>(emptySet())
     val tableLoadFailed: StateFlow<Set<String>> = _tableLoadFailed
 
+    // Tables whose last metadata query failed. _columns/_indexes stay null on failure so the
+    // next expand retries them — these markers only tell the UI to stop spinning forever.
+    private val _columnsFailed = MutableStateFlow<Set<String>>(emptySet())
+    val columnsFailed: StateFlow<Set<String>> = _columnsFailed
+
+    private val _indexesFailed = MutableStateFlow<Set<String>>(emptySet())
+    val indexesFailed: StateFlow<Set<String>> = _indexesFailed
+
     private val _expandedDatabases = MutableStateFlow<Set<String>>(emptySet())
     val expandedDatabases: StateFlow<Set<String>> = _expandedDatabases
 
@@ -369,11 +377,30 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Drops a database's cached sizes/columns/indexes and immediately reloads the metadata for
+     * the tables still expanded. Without the reload those rows keep a null cache and show a
+     * spinner forever, until the user collapses and re-expands each table by hand.
+     */
+    private fun refreshTableMetadata(database: String) {
+        val prefix = "$database."
+        _tableSizes.value = _tableSizes.value.filterKeys { !it.startsWith(prefix) }
+        _columns.value = _columns.value.filterKeys { !it.startsWith(prefix) }
+        _indexes.value = _indexes.value.filterKeys { !it.startsWith(prefix) }
+        _columnsFailed.value = _columnsFailed.value.filterNot { it.startsWith(prefix) }.toSet()
+        _indexesFailed.value = _indexesFailed.value.filterNot { it.startsWith(prefix) }.toSet()
+        _expandedTables.value
+            .filter { it.startsWith(prefix) }
+            .forEach { key ->
+                val table = key.removePrefix(prefix)
+                loadColumns(database, table)
+                loadIndexes(database, table)
+            }
+    }
+
     fun refreshTables(database: String) {
         _tables.value = _tables.value - database
-        _tableSizes.value = _tableSizes.value.filterKeys { !it.startsWith("$database.") }
-        _columns.value = _columns.value.filterKeys { !it.startsWith("$database.") }
-        _indexes.value = _indexes.value.filterKeys { !it.startsWith("$database.") }
+        refreshTableMetadata(database)
         requestTables(database)
     }
 
@@ -437,10 +464,11 @@ class BrowserViewModel @Inject constructor(
     }
 
     private fun loadColumns(database: String, table: String) {
+        val key = "$database.$table"
         viewModelScope.launch {
             try {
-                val key = "$database.$table"
                 if (_columns.value[key] != null) return@launch
+                _columnsFailed.value = _columnsFailed.value - key
                 _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW FULL COLUMNS FROM `$database`.`$table`")
                 when (val result = connectionManager.executeQuery("SHOW FULL COLUMNS FROM `$database`.`$table`")) {
                     is QueryResult.Success -> {
@@ -458,21 +486,29 @@ class BrowserViewModel @Inject constructor(
                             )
                         }
                         _columns.value = _columns.value + (key to columnList)
+                        _columnsFailed.value = _columnsFailed.value - key
                     }
-                    is QueryResult.Error -> _error.value = result.message
-                    else -> {}
+                    is QueryResult.Error -> {
+                        _error.value = result.message
+                        _columnsFailed.value = _columnsFailed.value + key
+                    }
+                    else -> {
+                        _columnsFailed.value = _columnsFailed.value + key
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = "Failed to load columns: ${e.message}"
+                _columnsFailed.value = _columnsFailed.value + key
             }
         }
     }
 
     private fun loadIndexes(database: String, table: String) {
+        val key = "$database.$table"
         viewModelScope.launch {
             try {
-                val key = "$database.$table"
                 if (_indexes.value[key] != null) return@launch
+                _indexesFailed.value = _indexesFailed.value - key
                 _currentQuery.value = _currentQuery.value + QueryLogEntry("SHOW INDEX FROM `$database`.`$table`")
                 when (val result = connectionManager.executeQuery("SHOW INDEX FROM `$database`.`$table`")) {
                     is QueryResult.Success -> {
@@ -495,10 +531,20 @@ class BrowserViewModel @Inject constructor(
                             )
                         }
                         _indexes.value = _indexes.value + (key to indexList)
+                        _indexesFailed.value = _indexesFailed.value - key
                     }
-                    else -> {}
+                    is QueryResult.Error -> {
+                        _error.value = result.message
+                        _indexesFailed.value = _indexesFailed.value + key
+                    }
+                    else -> {
+                        _indexesFailed.value = _indexesFailed.value + key
+                    }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _error.value = "Failed to load indexes: ${e.message}"
+                _indexesFailed.value = _indexesFailed.value + key
+            }
         }
     }
 
@@ -514,9 +560,7 @@ class BrowserViewModel @Inject constructor(
     fun refreshDatabase(database: String) {
         if (database == "__ALL__") { refreshAllDatabases(); return }
         _tables.value = _tables.value - database
-        _tableSizes.value = _tableSizes.value.filterKeys { !it.startsWith("$database.") }
-        _columns.value = _columns.value.filterKeys { !it.startsWith("$database.") }
-        _indexes.value = _indexes.value.filterKeys { !it.startsWith("$database.") }
+        refreshTableMetadata(database)
         if (_expandedDatabases.value.contains(database)) {
             requestTables(database)
         }
@@ -553,6 +597,8 @@ class BrowserViewModel @Inject constructor(
         _indexes.value = emptyMap()
         _tableSizes.value = emptyMap()
         _tableLoadFailed.value = emptySet()
+        _columnsFailed.value = emptySet()
+        _indexesFailed.value = emptySet()
         _expandedDatabases.value = emptySet()
         _expandedTables.value = emptySet()
         _selectedTable.value = null

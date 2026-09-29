@@ -96,6 +96,8 @@ fun DatabaseTree(
     modifier: Modifier = Modifier,
     loadingDatabases: Set<String> = emptySet(),
     tableLoadFailed: Set<String> = emptySet(),
+    columnsFailed: Set<String> = emptySet(),
+    indexesFailed: Set<String> = emptySet(),
     searchQuery: String,
     users: List<UserInfo>,
     onDatabaseClick: (String) -> Unit,
@@ -120,7 +122,7 @@ fun DatabaseTree(
         }
     }
 
-    val treeRows = remember(filteredDatabases, expandedDatabases, tables, columns, indexes, expandedTables, loadingDatabases, tableLoadFailed, searchQuery, isLocked) {
+    val treeRows = remember(filteredDatabases, expandedDatabases, tables, columns, indexes, expandedTables, loadingDatabases, tableLoadFailed, columnsFailed, indexesFailed, searchQuery, isLocked) {
         buildList {
             for (database in filteredDatabases) {
                 val name = database.name
@@ -391,7 +393,8 @@ fun DatabaseTree(
                     TreeSubFolder(
                         title = "Columns",
                         count = tableColumns?.size,
-                        isLoading = tableColumns == null,
+                        isLoading = tableColumns == null && !columnsFailed.contains(entry.tableKey),
+                        failed = tableColumns == null && columnsFailed.contains(entry.tableKey),
                         modifier = Modifier.padding(start = 32.dp)
                     )
                 }
@@ -440,7 +443,8 @@ fun DatabaseTree(
                     TreeSubFolder(
                         title = "Indexes",
                         count = tableIndexList?.size,
-                        isLoading = tableIndexList == null,
+                        isLoading = tableIndexList == null && !indexesFailed.contains(entry.tableKey),
+                        failed = tableIndexList == null && indexesFailed.contains(entry.tableKey),
                         modifier = Modifier.padding(start = 32.dp)
                     )
                 }
@@ -496,7 +500,8 @@ private fun TreeSubFolder(
     title: String,
     count: Int?,
     isLoading: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    failed: Boolean = false
 ) {
     Row(
         modifier = modifier
@@ -520,6 +525,13 @@ private fun TreeSubFolder(
         if (isLoading) {
             Spacer(modifier = Modifier.width(6.dp))
             CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp)
+        } else if (failed) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "failed to load",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         } else if (count != null) {
             Text(
                 text = " ($count)",
