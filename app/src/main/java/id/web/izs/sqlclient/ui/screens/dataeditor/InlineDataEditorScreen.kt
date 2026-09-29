@@ -380,17 +380,25 @@ fun InlineDataEditorScreen(
                     CircularProgressIndicator(modifier = Modifier.size(32.dp))
                 }
             } else if (columns.isEmpty() || rows.isEmpty()) {
+                // A write leaves the grid empty on purpose — say so instead of offering to
+                // insert a row into a table the user never came here to edit.
+                val writeRun = viewModel.lastRunWasWrite()
                 Column(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = if (columns.isEmpty()) "No columns found" else "No data found",
+                        text = when {
+                            columns.isEmpty() -> "No columns found"
+                            writeRun && error == null -> "Statement executed — no rows returned"
+                            writeRun -> "Statement failed — no rows returned"
+                            else -> "No data found"
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (!isReadonly && columns.isNotEmpty()) {
+                    if (!isReadonly && columns.isNotEmpty() && !writeRun) {
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { showInsertDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))

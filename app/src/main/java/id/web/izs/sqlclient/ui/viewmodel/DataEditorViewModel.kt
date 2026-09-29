@@ -53,6 +53,16 @@ class DataEditorViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    // Last statement the custom-query box actually sent. Compared against what the box still
+    // holds, so a plain SELECT, a sort/filter that reloads the grid, or text edited without
+    // being run can never be mistaken for "the write just executed".
+    private val _executedSql = MutableStateFlow<String?>(null)
+
+    fun lastRunWasWrite(): Boolean {
+        val executed = _executedSql.value ?: return false
+        return executed == _query.value.trim() && SqlUtil.isWriteQuery(executed)
+    }
+
     private val _dataLimit = MutableStateFlow(200)
     val dataLimit: StateFlow<Int> = _dataLimit.asStateFlow()
 
@@ -587,6 +597,7 @@ class DataEditorViewModel @Inject constructor(
         val limitedSql = sql
         val limit = _dataLimit.value
         _query.value = limitedSql
+        _executedSql.value = limitedSql
 
         when (val result = connectionManager.executeQuery(limitedSql)) {
             is QueryResult.Success -> {
@@ -594,7 +605,10 @@ class DataEditorViewModel @Inject constructor(
                 _rows.value = result.rows
                 _hasMoreData.value = result.rows.size >= limit
             }
-            is QueryResult.UpdateSuccess -> recordWrite(limitedSql, currentDatabase.ifBlank { null })
+            is QueryResult.UpdateSuccess -> {
+                _operationSuccess.value = "${result.affectedRows} row(s) affected"
+                recordWrite(limitedSql, currentDatabase.ifBlank { null })
+            }
             is QueryResult.Error -> _error.value = result.message
         }
     }
