@@ -1,5 +1,6 @@
 package id.web.izs.sqlclient.ui.screens.dataeditor
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -146,6 +147,7 @@ fun InlineDataEditorScreen(
     var pendingSql by remember { mutableStateOf<String?>(null) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showSaveConfirm by remember { mutableStateOf(false) }
+    var showExitConfirm by remember { mutableStateOf(false) }
     var showSQLEditor by remember { mutableStateOf(false) }
     var showWriteConfirm by remember { mutableStateOf(false) }
     var editableQuery by remember { mutableStateOf(TextFieldValue("")) }
@@ -156,6 +158,12 @@ fun InlineDataEditorScreen(
     val pendingEdits by viewModel.pendingEdits.collectAsState()
     val pendingDeletes by viewModel.pendingDeletes.collectAsState()
     val hasPending = pendingEdits.isNotEmpty() || pendingDeletes.isNotEmpty()
+    // Single exit path: the top-bar arrow calls onBack() directly, so BackHandler never saw
+    // it. Both that arrow and the system back now go through here, and neither leaves the
+    // screen while staged edits exist.
+    val requestExit: () -> Unit = {
+        if (hasPending) showExitConfirm = true else onBack()
+    }
     // Multi-select batch edit: when editing a cell while rows are selected
     var multiEditTarget by remember { mutableStateOf<Triple<Int, Int, Any?>?>(null) }
 
@@ -262,7 +270,7 @@ fun InlineDataEditorScreen(
                 isLocked = isLocked,
                 showLock = true,
                 onToggleLock = onToggleLock,
-                onBack = onBack,
+                onBack = requestExit,
                 onStructure = onOpenStructure,
                 onSave = if (hasPending) ({ showSaveConfirm = true }) else null,
                 onReconnect = onReconnect,
@@ -562,6 +570,32 @@ fun InlineDataEditorScreen(
                 TextButton(onClick = { val a = pendingAction; pendingSql = null; pendingAction = null; a?.invoke() }) { Text("Execute", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { pendingSql = null; pendingAction = null }) { Text("Cancel") } }
+        )
+    }
+
+    // Leaving with staged edits would throw them away silently — this ViewModel dies with
+    // this destination, so nothing survives the back. Discard only: an exit is not a place
+    // to run a write the user has not previewed (Save stays behind its own confirm, where
+    // the generated SQL can be shown first). Disabled while the dialog is up so its own
+    // window takes the back press and just closes itself.
+    BackHandler(enabled = !showExitConfirm) {
+        requestExit()
+    }
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text("Discard changes?") },
+            text = { Text("Leaving now discards your staged changes. Nothing has been sent to the server.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirm = false
+                    viewModel.clearStaged()
+                    onBack()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) { Text("Keep editing") }
+            }
         )
     }
 
