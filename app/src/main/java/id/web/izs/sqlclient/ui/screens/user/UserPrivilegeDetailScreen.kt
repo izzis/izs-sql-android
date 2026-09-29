@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -59,6 +62,28 @@ import id.web.izs.sqlclient.ui.viewmodel.UserPermissionViewModel
 import id.web.izs.sqlclient.util.rememberCopyToClipboard
 
 private val PRIVS = listOf("SELECT","INSERT","UPDATE","DELETE","CREATE","DROP","ALTER","INDEX")
+
+// Flattened rows so an expanded database contributes one item per table instead of
+// composing every table inside a single eager item.
+private sealed interface PrivilegeRow {
+    val rowKey: String
+
+    data class Database(val db: String) : PrivilegeRow {
+        override val rowKey: String get() = "db:$db"
+    }
+
+    data class Status(val db: String, val label: String) : PrivilegeRow {
+        override val rowKey: String get() = "status:$db"
+    }
+
+    data class Table(val db: String, val table: String) : PrivilegeRow {
+        override val rowKey: String get() = "table:$db.$table"
+    }
+
+    data class Separator(val db: String) : PrivilegeRow {
+        override val rowKey: String get() = "sep:$db"
+    }
+}
 
 @Composable
 fun UserPrivilegeDetailScreen(
@@ -209,185 +234,215 @@ fun UserPrivilegeDetailScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState()).padding(12.dp)
-        ) {
-            ReconnectBanner(message = reconnectMessage)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(enabled = !isLocked, onClick = { showRenameDialog = true }) { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Rename") }
-                TextButton(enabled = !isLocked, onClick = { showPasswordDialog = true }) { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Password") }
-            }
-            if (isLoading && grants.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp)) }
-            }
-            if (hasPendingPriv) {
-                Spacer(Modifier.height(6.dp))
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("${pendingPrivChanges.size} pending", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.width(8.dp))
-                    Text("— Save to confirm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { viewModel.clearPendingPrivs(user, host) }, modifier = Modifier.height(28.dp)) { Text("Discard", style = MaterialTheme.typography.labelSmall) }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("Databases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            if (allDatabases.isEmpty()) {
-                Text("No databases loaded", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                allDatabases.forEach { db ->
-                    val boldDb = effectiveHasAnyPriv(db, null)
-                    val onKey = "${db}.*"
-                    val allCheckedDb = PRIVS.all { effectiveChecked(it, onKey) }
-                    val someCheckedDb = PRIVS.any { effectiveChecked(it, onKey) }
-                    val stagedDb = anyStaged(onKey)
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(db, style = MaterialTheme.typography.bodyMedium, fontWeight = if (boldDb) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                        if (expandedPriv == db) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = allCheckedDb,
-                                    onCheckedChange = { want: Boolean ->
-                                        if (isLocked) return@Checkbox
-                                        PRIVS.forEach { priv ->
-                                            val base = hasPrivOnTarget(priv, onKey)
-                                            viewModel.stagePrivToggle(user, host, priv, onKey, want, base)
-                                        }
-                                    },
-                                    enabled = !isLocked,
-                                    modifier = Modifier.size(24.dp),
-                                    colors = if (stagedDb) {
-                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
-                                    } else {
-                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
-                                    }
-                                )
-                                Text(
-                                    "All",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (stagedDb) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                    fontWeight = if (stagedDb) FontWeight.SemiBold else FontWeight.Normal,
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
-                            }
-                        }
-                        TextButton(onClick = { expandedPriv = if (expandedPriv == db) null else db }, enabled = true) { Text(if (expandedPriv == db) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
-                        IconButton(onClick = { val e = expandedDb == db; expandedDb = if (e) null else db; if (!e) viewModel.loadTablesForDb(db) }, modifier = Modifier.size(28.dp)) {
-                            Icon(if (expandedDb == db) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                    if (expandedPriv == db) {
-                        Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(6.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PRIVS.chunked(4).forEach { row ->
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    row.forEach { priv ->
-                                        val baseChecked = hasPrivOnTarget(priv, onKey)
-                                        val checked = effectiveChecked(priv, onKey)
-                                        val staged = isStaged(priv, onKey)
-                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
-                                            .then(if (staged) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
-                                            .clickable(enabled = !isLocked) {
-                                            viewModel.stagePrivToggle(user, host, priv, onKey, !checked, baseChecked)
-                                        }) {
-                                            Checkbox(checked = checked, onCheckedChange = { want: Boolean ->
-                                                if (isLocked) return@Checkbox
-                                                viewModel.stagePrivToggle(user, host, priv, onKey, want, baseChecked)
-                                            }, enabled = !isLocked, modifier = Modifier.size(24.dp),
-                                                colors = if (staged) {
-                                                    CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
-                                                } else {
-                                                    CheckboxDefaults.colors()
-                                                })
-                                            Text(
-                                                priv,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (staged) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = if (staged) FontWeight.SemiBold else FontWeight.Normal
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-                    }
+        val dbRows = remember(allDatabases, expandedDb, dbTables) {
+            buildList {
+                for (db in allDatabases) {
+                    add(PrivilegeRow.Database(db))
                     if (expandedDb == db) {
                         val tables = dbTables[db]
-                        if (tables == null) {
-                            Text("Loading...", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 16.dp))
-                        } else if (tables.isEmpty()) {
-                            Text("No tables", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))
-                        } else {
-                            Column(modifier = Modifier.padding(start = 16.dp)) {
-                                tables.forEach { tbl ->
-                                    val boldTbl = effectiveHasAnyPriv(db, tbl)
-                                    val tKey = "$db.$tbl"
-                                    val allCheckedTbl = PRIVS.all { effectiveChecked(it, tKey) }
-                                    val stagedTbl = anyStaged(tKey)
-                                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                            Text(tbl, style = MaterialTheme.typography.bodySmall, fontWeight = if (boldTbl) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
-                                            if (expandedPriv == tKey) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Checkbox(
-                                                        checked = allCheckedTbl,
-                                                        onCheckedChange = { want: Boolean ->
-                                                            if (isLocked) return@Checkbox
-                                                            PRIVS.forEach { priv ->
-                                                                val base = hasPrivOnTarget(priv, tKey)
-                                                                viewModel.stagePrivToggle(user, host, priv, tKey, want, base)
-                                                            }
-                                                        },
-                                                        enabled = !isLocked,
-                                                        modifier = Modifier.size(24.dp),
-                                                        colors = if (stagedTbl) {
+                        when {
+                            tables == null -> add(PrivilegeRow.Status(db, "Loading..."))
+                            tables.isEmpty() -> add(PrivilegeRow.Status(db, "No tables"))
+                            else -> for (table in tables) add(PrivilegeRow.Table(db, table))
+                        }
+                    }
+                    add(PrivilegeRow.Separator(db))
+                }
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(12.dp)
+        ) {
+            item(key = "reconnect") {
+                ReconnectBanner(message = reconnectMessage)
+            }
+            item(key = "actions") {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled = !isLocked, onClick = { showRenameDialog = true }) { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Rename") }
+                    TextButton(enabled = !isLocked, onClick = { showPasswordDialog = true }) { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Password") }
+                }
+            }
+            if (isLoading && grants.isEmpty()) {
+                item(key = "loading") {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+            if (hasPendingPriv) {
+                item(key = "pending") {
+                    Column {
+                        Spacer(Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${pendingPrivChanges.size} pending", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.width(8.dp))
+                            Text("— Save to confirm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { viewModel.clearPendingPrivs(user, host) }, modifier = Modifier.height(28.dp)) { Text("Discard", style = MaterialTheme.typography.labelSmall) }
+                        }
+                    }
+                }
+            }
+            item(key = "databases-header") {
+                Spacer(Modifier.height(8.dp))
+                Text("Databases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+            }
+            if (allDatabases.isEmpty()) {
+                item(key = "no-databases") {
+                    Text("No databases loaded", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                items(dbRows, key = { it.rowKey }) { entry ->
+                    when (entry) {
+                        is PrivilegeRow.Database -> {
+                            val db = entry.db
+                            val boldDb = effectiveHasAnyPriv(db, null)
+                            val onKey = "${db}.*"
+                            val allCheckedDb = PRIVS.all { effectiveChecked(it, onKey) }
+                            val stagedDb = anyStaged(onKey)
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(db, style = MaterialTheme.typography.bodyMedium, fontWeight = if (boldDb) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
+                                if (expandedPriv == db) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = allCheckedDb,
+                                            onCheckedChange = { want: Boolean ->
+                                                if (isLocked) return@Checkbox
+                                                PRIVS.forEach { priv ->
+                                                    val base = hasPrivOnTarget(priv, onKey)
+                                                    viewModel.stagePrivToggle(user, host, priv, onKey, want, base)
+                                                }
+                                            },
+                                            enabled = !isLocked,
+                                            modifier = Modifier.size(24.dp),
+                                            colors = if (stagedDb) {
+                                                CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                            } else {
+                                                CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                            }
+                                        )
+                                        Text(
+                                            "All",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (stagedDb) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                            fontWeight = if (stagedDb) FontWeight.SemiBold else FontWeight.Normal,
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = { expandedPriv = if (expandedPriv == db) null else db }, enabled = true) { Text(if (expandedPriv == db) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
+                                IconButton(onClick = { val e = expandedDb == db; expandedDb = if (e) null else db; if (!e) viewModel.loadTablesForDb(db) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(if (expandedDb == db) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            if (expandedPriv == db) {
+                                Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(6.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    PRIVS.chunked(4).forEach { row ->
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            row.forEach { priv ->
+                                                val baseChecked = hasPrivOnTarget(priv, onKey)
+                                                val checked = effectiveChecked(priv, onKey)
+                                                val staged = isStaged(priv, onKey)
+                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
+                                                    .then(if (staged) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
+                                                    .clickable(enabled = !isLocked) {
+                                                    viewModel.stagePrivToggle(user, host, priv, onKey, !checked, baseChecked)
+                                                }) {
+                                                    Checkbox(checked = checked, onCheckedChange = { want: Boolean ->
+                                                        if (isLocked) return@Checkbox
+                                                        viewModel.stagePrivToggle(user, host, priv, onKey, want, baseChecked)
+                                                    }, enabled = !isLocked, modifier = Modifier.size(24.dp),
+                                                        colors = if (staged) {
                                                             CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
                                                         } else {
-                                                            CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
-                                                        }
-                                                    )
+                                                            CheckboxDefaults.colors()
+                                                        })
                                                     Text(
-                                                        "All",
+                                                        priv,
                                                         style = MaterialTheme.typography.labelSmall,
-                                                        color = if (stagedTbl) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                                        fontWeight = if (stagedTbl) FontWeight.SemiBold else FontWeight.Normal,
-                                                        modifier = Modifier.padding(end = 4.dp)
+                                                        color = if (staged) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                                        fontWeight = if (staged) FontWeight.SemiBold else FontWeight.Normal
                                                     )
                                                 }
                                             }
-                                            TextButton(onClick = { expandedPriv = if (expandedPriv == tKey) null else tKey }) { Text(if (expandedPriv == tKey) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
                                         }
-                                        if (expandedPriv == tKey) {
-                                            Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(6.dp)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                PRIVS.chunked(4).forEach { row ->
-                                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        row.forEach { priv ->
-                                                            val baseCheckedTbl = hasPrivOnTarget(priv, tKey)
-                                                            val checkedTbl = effectiveChecked(priv, tKey)
-                                                            val stagedTblCell = isStaged(priv, tKey)
-                                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
-                                                                .then(if (stagedTblCell) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
-                                                                .clickable(enabled = !isLocked) {
-                                                                viewModel.stagePrivToggle(user, host, priv, tKey, !checkedTbl, baseCheckedTbl)
-                                                            }) {
-                                                                Checkbox(checked = checkedTbl, onCheckedChange = { want: Boolean ->
-                                                                    if (isLocked) return@Checkbox
-                                                                    viewModel.stagePrivToggle(user, host, priv, tKey, want, baseCheckedTbl)
-                                                                }, enabled = !isLocked, modifier = Modifier.size(24.dp),
-                                                                    colors = if (stagedTblCell) {
-                                                                        CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
-                                                                    } else {
-                                                                        CheckboxDefaults.colors()
-                                                                    })
-                                                                Text(
-                                                                    priv,
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    color = if (stagedTblCell) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                                                                    fontWeight = if (stagedTblCell) FontWeight.SemiBold else FontWeight.Normal
-                                                                )
-                                                            }
-                                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                            }
+                        }
+                        is PrivilegeRow.Status -> {
+                            Text(entry.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))
+                        }
+                        is PrivilegeRow.Table -> {
+                            val db = entry.db
+                            val tbl = entry.table
+                            val boldTbl = effectiveHasAnyPriv(db, tbl)
+                            val tKey = "$db.$tbl"
+                            val allCheckedTbl = PRIVS.all { effectiveChecked(it, tKey) }
+                            val stagedTbl = anyStaged(tKey)
+                            Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp).padding(vertical = 2.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tbl, style = MaterialTheme.typography.bodySmall, fontWeight = if (boldTbl) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f))
+                                    if (expandedPriv == tKey) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = allCheckedTbl,
+                                                onCheckedChange = { want: Boolean ->
+                                                    if (isLocked) return@Checkbox
+                                                    PRIVS.forEach { priv ->
+                                                        val base = hasPrivOnTarget(priv, tKey)
+                                                        viewModel.stagePrivToggle(user, host, priv, tKey, want, base)
+                                                    }
+                                                },
+                                                enabled = !isLocked,
+                                                modifier = Modifier.size(24.dp),
+                                                colors = if (stagedTbl) {
+                                                    CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                                } else {
+                                                    CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                                                }
+                                            )
+                                            Text(
+                                                "All",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (stagedTbl) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                                fontWeight = if (stagedTbl) FontWeight.SemiBold else FontWeight.Normal,
+                                                modifier = Modifier.padding(end = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    TextButton(onClick = { expandedPriv = if (expandedPriv == tKey) null else tKey }) { Text(if (expandedPriv == tKey) "Hide" else "Privileges", style = MaterialTheme.typography.labelSmall) }
+                                }
+                                if (expandedPriv == tKey) {
+                                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(6.dp)).padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        PRIVS.chunked(4).forEach { row ->
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                row.forEach { priv ->
+                                                    val baseCheckedTbl = hasPrivOnTarget(priv, tKey)
+                                                    val checkedTbl = effectiveChecked(priv, tKey)
+                                                    val stagedTblCell = isStaged(priv, tKey)
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)
+                                                        .then(if (stagedTblCell) Modifier.background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), RoundedCornerShape(4.dp)) else Modifier)
+                                                        .clickable(enabled = !isLocked) {
+                                                        viewModel.stagePrivToggle(user, host, priv, tKey, !checkedTbl, baseCheckedTbl)
+                                                    }) {
+                                                        Checkbox(checked = checkedTbl, onCheckedChange = { want: Boolean ->
+                                                            if (isLocked) return@Checkbox
+                                                            viewModel.stagePrivToggle(user, host, priv, tKey, want, baseCheckedTbl)
+                                                        }, enabled = !isLocked, modifier = Modifier.size(24.dp),
+                                                            colors = if (stagedTblCell) {
+                                                                CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.error, uncheckedColor = MaterialTheme.colorScheme.error)
+                                                            } else {
+                                                                CheckboxDefaults.colors()
+                                                            })
+                                                        Text(
+                                                            priv,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = if (stagedTblCell) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                                            fontWeight = if (stagedTblCell) FontWeight.SemiBold else FontWeight.Normal
+                                                        )
                                                     }
                                                 }
                                             }
@@ -396,14 +451,18 @@ fun UserPrivilegeDetailScreen(
                                 }
                             }
                         }
+                        is PrivilegeRow.Separator -> {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Text("Grant Statements", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(4.dp))
-            grants.forEach { g ->
+            item(key = "grants-header") {
+                Spacer(Modifier.height(12.dp))
+                Text("Grant Statements", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+            }
+            itemsIndexed(grants, key = { index, _ -> "grant:$index" }) { _, g ->
                 SelectionContainer { Text(g, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(4.dp)).padding(8.dp)) }
                 Spacer(Modifier.height(4.dp))
             }
