@@ -1,6 +1,7 @@
-# MariaDB Connector/J: driver lookup + reflective field access. The 2.4.4
-# line predates R8 consumer rules, so keep it whole. Names must NOT be
-# obfuscated: the driver manager resolves implementations by class name.
+# MariaDB Connector/J: driver lookup + reflective field access. Names must NOT
+# be obfuscated — DriverManager resolves the driver by class name, and the
+# META-INF/services plugins (auth/codec/credential/TLS) load via ServiceLoader
+# against these exact names.
 -keep class org.mariadb.jdbc.** { *; }
 -dontwarn org.mariadb.jdbc.**
 

@@ -94,8 +94,10 @@ android {
     lint {
         // Errors already abort (default); warnings must not creep back either.
         warningsAsErrors = strictWarnings
-        // Exception: mariadb-java-client is locked at 2.4.4 (2.5.x broke on
-        // Android) — NewerVersionAvailable stays ignored in app/lint.xml.
+        // TrustAllX509TrustManager findings inside the mariadb driver jar
+        // (sslMode=trust) live here, so the check stays live for our own code
+        // and re-flags on any future driver bump (jar path changes).
+        baseline = file("lint-baseline.xml")
     }
 
     compileOptions {
@@ -154,8 +156,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.5")
     ksp("androidx.room:room-compiler:2.8.5")
 
-    // MariaDB JDBC Driver - 2.4.4 is the latest version compatible with Android's java.sql and regex engine
-    implementation("org.mariadb.jdbc:mariadb-java-client:2.4.4")
+    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.10")
 
     // SSH Tunnel (maintained fork of jcraft/jsch)
     implementation("com.github.mwiede:jsch:2.28.7")

@@ -16,7 +16,7 @@ Runtime dependencies (see `app/build.gradle.kts`):
 - `androidx.compose:compose-bom:2026.09.00`, `material3`, extended icons, `navigation-compose:2.10.1`, `activity-compose:1.13.0`
 - `hilt-android:2.60.1` + `ksp 2.3.12`, `androidx.hilt:hilt-*:1.4.0`, `room:2.8.5` + `ksp`
 - `security-crypto` removed — live creds use Android Keystore AES-GCM directly, no Jetpack dep
-- `mariadb-java-client:2.4.4` (latest version compatible with Android's `java.sql`/regex)
+- `mariadb-java-client:3.5.10` (tested on device — the Android regex bugs in 2.5.x–3.3.x were fixed upstream in 3.4.1)
 - `jsch:2.28.7` (maintained mwiede fork), `kotlinx-coroutines-android:1.11.0`
 - `core-ktx:1.19.0`, `lifecycle-*:2.11.0`, test `junit:1.3.0` / `espresso:3.7.0`
 

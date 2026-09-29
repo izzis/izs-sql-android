@@ -1,7 +1,2 @@
 <lint>
-    <!--
-      mariadb-java-client is locked at 2.4.4: 2.5.x already broke on Android's
-      java.sql and regex engine, so reports of newer driver versions are ignored.
-    -->
-    <issue id="NewerVersionAvailable" severity="ignore" />
 </lint>

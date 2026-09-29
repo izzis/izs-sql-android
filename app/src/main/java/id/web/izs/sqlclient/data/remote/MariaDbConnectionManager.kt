@@ -118,14 +118,12 @@ class MariaDbConnectionManager @Inject constructor(
                 put("connectTimeout", "8000")
                 put("socketTimeout", "30000")
 
-                if (profile.useSsl) {
-                    put("useSSL", "true")
-                    put("trustServerCertificate", "true")
-                    put("allowPublicKeyRetrieval", "true")
-                } else {
-                    put("useSSL", "false")
-                    put("allowPublicKeyRetrieval", "true")
-                }
+                // 3.x maps `useSSL`/`trustServerCertificate` through a legacy handler
+                // that loads `deprecated.properties` and NPEs if the resource is missing
+                // from the APK. `sslMode` skips that path entirely and is case-insensitive
+                // over exactly four values: disable / trust / verify-ca / verify-full.
+                put("sslMode", if (profile.useSsl) "trust" else "disable")
+                put("allowPublicKeyRetrieval", "true")
 
                 if (!profile.database.isNullOrBlank()) {
                     put("database", profile.database)
