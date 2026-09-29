@@ -51,6 +51,21 @@ import id.web.izs.sqlclient.util.rememberCopyToClipboard
 // and never collides with `error` red, which always means "the server rejected it".
 private val StagedAmber = Color(0xFFB26A00)
 
+/**
+ * One log entry as copyable text: the statement, then its failure as SQL line comments.
+ * The error travels WITH the statement (copy all is mostly used to report a problem, and a
+ * log without its failures is half a story) while the result stays runnable in any client.
+ * Each line of a multi-line server message gets its own `--`, so nothing can escape the
+ * comment and split the statement.
+ */
+private fun logEntryText(entry: QueryLogEntry): String = buildString {
+    val sql = entry.sql.trimEnd()
+    append(sql)
+    if (!sql.endsWith(";")) append(";")
+    val error = entry.error
+    if (error != null) append("\n-- ").append(error.replace("\n", "\n-- "))
+}
+
 @Composable
 fun CurrentQueryBar(
     queries: List<QueryLogEntry>,
@@ -130,8 +145,10 @@ fun CurrentQueryBar(
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            // weight(fill = true) is what pushes the buttons to the right edge:
+                            // with fill = false a short query leaves its slack AFTER the icons.
                             modifier = Modifier
-                                .weight(1f, fill = false)
+                                .weight(1f)
                                 .padding(start = 4.dp)
                         )
                     }
@@ -147,17 +164,20 @@ fun CurrentQueryBar(
                                 onClick = onClear,
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Default.DeleteOutline, contentDescription = "Clear query log", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Clear query log", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(modifier = Modifier.width(4.dp))
                         }
                         IconButton(
                             onClick = {
-                                copyToClipboard(queries.joinToString(";\n") { it.sql }, "Copied")
+                                copyToClipboard(
+                                    queries.joinToString("\n", transform = ::logEntryText),
+                                    "Copied"
+                                )
                             },
                             modifier = Modifier.size(24.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy all", modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy all", modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -278,6 +298,24 @@ fun CurrentQueryBar(
                                                     )
                                                 }
                                             }
+                                        }
+                                    }
+                                    // Only a failed row gets its own copy button: the failure
+                                    // message is the one thing SelectionContainer makes painful
+                                    // to grab, and the one that actually gets reported. SQL on a
+                                    // healthy row is already covered by selection and Copy all.
+                                    if (failed) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = { copyToClipboard(logEntryText(entry), "Copied") },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Copy error",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
                                 }
