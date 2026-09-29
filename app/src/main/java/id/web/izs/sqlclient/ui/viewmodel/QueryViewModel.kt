@@ -164,11 +164,20 @@ class QueryViewModel @Inject constructor(
     }
 
     fun useDatabase(database: String) {
-        _currentDatabase = database
         val sql = "USE `$database`"
         _currentQuery.value = _currentQuery.value + QueryLogEntry(sql)
         viewModelScope.launch {
-            try { connectionManager.executeQuery(sql) } catch (_: Exception) {}
+            try {
+                // Claim the schema only once the server actually switched: a failed USE must
+                // not label history/favourites with a database the connection never left.
+                // QueryResult.Error is already marked on the log line above by the
+                // queryFailures collector, so only a throw has to be reported here.
+                if (connectionManager.executeQuery(sql) !is QueryResult.Error) {
+                    _currentDatabase = database
+                }
+            } catch (e: Exception) {
+                _currentQuery.value = _currentQuery.value.withQueryError(sql, e.message ?: "USE failed")
+            }
         }
     }
 
