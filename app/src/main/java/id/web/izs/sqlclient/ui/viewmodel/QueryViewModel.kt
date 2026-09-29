@@ -14,8 +14,11 @@ import id.web.izs.sqlclient.util.withQueryError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -46,8 +49,19 @@ class QueryViewModel @Inject constructor(
         }
     }
 
-    private val _queryResult = MutableStateFlow<QueryResultState>(QueryResultState.Idle)
-    val queryResult: StateFlow<QueryResultState> = _queryResult.asStateFlow()
+    // One result per tab, so switching tabs can never show another tab's rows (or another
+    // tab's "N rows affected"). Derived from _activeTabId so every path that changes the
+    // active tab — setActiveTab, closeTab, addTab, ensureTabForDatabase — switches too.
+    private val _resultsByTab = MutableStateFlow<Map<Long, QueryResultState>>(emptyMap())
+    val queryResult: StateFlow<QueryResultState> =
+        combine(_resultsByTab, _activeTabId) { results, tabId -> results[tabId] ?: QueryResultState.Idle }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, QueryResultState.Idle)
+
+    private fun publishResult(tabId: Long, state: QueryResultState) {
+        // Drop results for a tab that was closed while its query was still in flight.
+        if (_queryTabs.value.none { it.id == tabId }) return
+        _resultsByTab.value = _resultsByTab.value + (tabId to state)
+    }
 
     private val _isExecuting = MutableStateFlow(false)
     val isExecuting: StateFlow<Boolean> = _isExecuting.asStateFlow()
@@ -119,6 +133,7 @@ class QueryViewModel @Inject constructor(
         if (index != -1) {
             tabs.removeAt(index)
             _queryTabs.value = tabs
+            _resultsByTab.value = _resultsByTab.value - tabId
 
             if (_activeTabId.value == tabId) {
                 // prefer tab from same database
@@ -162,38 +177,41 @@ class QueryViewModel @Inject constructor(
         val query = activeTab.query.trim()
 
         if (query.isBlank()) return
-        if (isLocked && isWriteQuery()) { _queryResult.value = QueryResultState.Error("Locked \u2014 unlock to write"); return }
+        if (isLocked && isWriteQuery()) { publishResult(activeTab.id, QueryResultState.Error("Locked \u2014 unlock to write")); return }
 
         _currentQuery.value = _currentQuery.value + QueryLogEntry(query)
         currentQueryJob?.cancel()
         currentQueryJob = viewModelScope.launch {
             _isExecuting.value = true
-            _queryResult.value = QueryResultState.Loading
+            publishResult(activeTab.id, QueryResultState.Loading)
 
             try {
                 when (val result = connectionManager.executeQuery(query)) {
                     is QueryResult.Success -> {
-                        _queryResult.value = QueryResultState.Success(
-                            columns = result.columns,
-                            rows = result.rows,
-                            rowCount = result.rowCount,
-                            truncated = result.truncated
+                        publishResult(
+                            activeTab.id,
+                            QueryResultState.Success(
+                                columns = result.columns,
+                                rows = result.rows,
+                                rowCount = result.rowCount,
+                                truncated = result.truncated
+                            )
                         )
                         saveToHistory(query, activeTab.database)
                     }
                     is QueryResult.UpdateSuccess -> {
-                        _queryResult.value = QueryResultState.UpdateSuccess(result.affectedRows)
+                        publishResult(activeTab.id, QueryResultState.UpdateSuccess(result.affectedRows))
                         saveToHistory(query, activeTab.database)
                     }
                     is QueryResult.Error -> {
-                        _queryResult.value = QueryResultState.Error(result.message)
+                        publishResult(activeTab.id, QueryResultState.Error(result.message))
                     }
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
-                    _queryResult.value = QueryResultState.Error("Cancelled")
+                    publishResult(activeTab.id, QueryResultState.Error("Cancelled"))
                 } else {
-                    _queryResult.value = QueryResultState.Error("Execution failed: ${e.message}")
+                    publishResult(activeTab.id, QueryResultState.Error("Execution failed: ${e.message}"))
                 }
             } finally {
                 _isExecuting.value = false
@@ -205,9 +223,9 @@ class QueryViewModel @Inject constructor(
         currentQueryJob?.cancel()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) { try { connectionManager.cancelCurrentQuery() } catch (_: Exception) {} }
         _isExecuting.value = false
-        if (_queryResult.value is QueryResultState.Loading) {
-            _queryResult.value = QueryResultState.Error("Cancelled")
-        }
+        // Only the tab that is actually still running gets the "Cancelled" result.
+        val running = _resultsByTab.value.entries.firstOrNull { it.value is QueryResultState.Loading }?.key
+        if (running != null) publishResult(running, QueryResultState.Error("Cancelled"))
     }
 
     private fun saveToHistory(query: String, database: String? = null) {
@@ -335,7 +353,7 @@ class QueryViewModel @Inject constructor(
     fun clearAll() {
         _queryTabs.value = listOf(QueryTab(id = 1, query = ""))
         _activeTabId.value = 1
-        _queryResult.value = QueryResultState.Idle
+        _resultsByTab.value = emptyMap()
         _isExecuting.value = false
         _currentProfileId.value = null
     }
