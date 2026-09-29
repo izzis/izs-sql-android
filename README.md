@@ -16,7 +16,7 @@ Native Android SQL client for **MariaDB/MySQL** — browse databases/tables, run
 ## Features
 
 - **Connection management** — create/edit/delete profiles, colored badges, read-only default per connection.
-- **Direct & SSH tunnel connections** — MariaDB JDBC 2.4.4 + JSch tunnelling (password or key + passphrase).
+- **Direct & SSH tunnel connections** — MariaDB JDBC 3.5.10 + JSch tunnelling (password or key + passphrase).
 - **Database browser** — privilege-filtered sidebar + main panel, manual refresh.
 - **SQL editor with autocomplete** — syntax highlighting, context-aware `db.table.column` + JOIN autocomplete. Write queries show a confirm dialog; TopBar refresh only re-executes reads.
 - **Inline data editor** — paginated grid with infinite scroll, WHERE filter, per-cell edit, batch staging, custom query bar with write-confirm.
@@ -53,7 +53,7 @@ From scratch (install JDK/SDK): [docs/setup.md](docs/setup.md).
    - Workflow/test/troubleshoot — [docs/development.md](docs/development.md)
 2. **Prefer `Glob`/`Grep`** for discovery; the structure map lives in [docs/architecture.md](docs/architecture.md#project-structure).
 3. **Write query safety**: every write MUST have a preview + confirm dialog + lock gate in the ViewModel. `SqlUtil.isWriteQuery()` classification is **default-deny** (`FLUSH` is the only by-design exception). Refresh must never execute a write. Details: [docs/write-safety.md](docs/write-safety.md).
-4. **Query log**: every query sent to the server must be appended to `_currentQuery` before `executeQuery()` — no hidden queries. A failed query → red row + the server error message (verbatim) under the same log number (`QueryLogEntry.error`, from `connectionManager.queryFailures`). A **staged** query (not yet sent) → amber row + `staged` label, removed on Discard, flips to a normal row once executed. The log **clears only on page change** / the bar's clear button — refresh never clears it.
+4. **Query log**: every query sent to the server must be appended to `_currentQuery` before `executeQuery()` — no hidden queries. A failed query → red row + the server error message (verbatim) under the same log number (`QueryLogEntry.error`, written through the connection manager's `queryStatements` flow — retried attempts and the healing `USE db` get their own lines too). A **staged** query (not yet sent) → amber row + `staged` label, removed on Discard, flips to a normal row once executed. The log **clears only on page change** / the bar's clear button — refresh never clears it.
 5. **Never persist `sessionLocked`** — live state on `ConnectionViewModel` only.
 6. **Testing gate**: new query features MUST add/update tests (`SqlUtilTest`, 22 tests) and keep CI green.
 7. `permission: { bash: { "git commit*": "ask", "git push*": "ask" } }` — commit/push require approval.

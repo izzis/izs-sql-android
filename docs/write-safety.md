@@ -21,8 +21,11 @@ Details:
 - `SELECT ... INTO OUTFILE/DUMPFILE`, `... FOR UPDATE`, `... LOCK IN SHARE MODE`
   still count as write (and are excluded from auto-`LIMIT`).
 - Typo/unknown (`INSERTINTO`, foreign statements) = write (confirm first, safe).
-- Side effect: `MariaDbConnectionManager.executeQuery()` only retries
-  statements where `!isWriteQuery` — writes are never double-applied.
+- Side effect: `MariaDbConnectionManager.executeQuery()` heals and retries
+  **at most once**, on two paths — 1046 (`No database selected`): the server
+  refused the statement *before* it ran, so **writes are retried too** (nothing
+  to double-apply); a dead socket: **reads only** (`!isWriteQuery`), because
+  re-running a write there could double-apply it.
 
 ### The single exception: `FLUSH`
 
