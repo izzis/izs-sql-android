@@ -3,6 +3,7 @@ package id.web.izs.sqlclient.data.remote
 import android.util.Log
 import id.web.izs.sqlclient.data.local.entity.ConnectionProfileEntity
 import id.web.izs.sqlclient.util.CredentialStore
+import id.web.izs.sqlclient.util.QueryStatement
 import id.web.izs.sqlclient.util.SqlUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
@@ -209,15 +210,38 @@ class MariaDbConnectionManager @Inject constructor(
     }
 
     /**
-     * Re-selects [database] on a connection that was just opened. Runs inside [connect], so it
-     * is best effort and deliberately quiet: there is no query-log line here to attach a failure
-     * to, and a failed restore only costs the same 1046 the next statement reports anyway.
+     * Re-selects [database] on a connection that was just opened. Runs inside [connect], so
+     * it is best effort: a failed restore only costs the same 1046 the next statement reports
+     * anyway, and [executeLogged] puts the attempt in the query log either way.
      */
     private suspend fun restoreSessionDatabase(database: String) {
-        when (val result = executeQueryOnce("USE `$database`")) {
-            is QueryResult.Error -> Log.w(TAG, "Could not restore schema `$database` — ${result.message}")
-            else -> Log.d(TAG, "Schema `$database` restored")
+        val error = executeLogged("USE `$database`")
+        if (error == null) {
+            Log.d(TAG, "Schema `$database` restored")
+        } else {
+            Log.w(TAG, "Could not restore schema `$database` — $error")
         }
+    }
+
+    /**
+     * Runs a statement only this layer composes and publishes it to [queryStatements], so it
+     * lands in the query log like every statement a ViewModel sends. Best effort: callers are
+     * on a recovery path, and the message is returned instead of being thrown at them.
+     * @param origin the statement that provoked this one, or null when none did (see
+     *   [id.web.izs.sqlclient.util.QueryStatement.origin]).
+     * @return null on success, otherwise the verbatim driver/server message.
+     */
+    private suspend fun executeLogged(sql: String, origin: String? = null): String? {
+        val error = try {
+            when (val result = executeQueryOnce(sql)) {
+                is QueryResult.Error -> result.message
+                else -> null
+            }
+        } catch (e: Exception) {
+            e.message ?: "Statement failed"
+        }
+        _queryStatements.tryEmit(QueryStatement(sql, error, origin = origin))
+        return error
     }
 
     @Volatile private var activeStatement: java.sql.Statement? = null
@@ -254,19 +278,34 @@ class MariaDbConnectionManager @Inject constructor(
     private val queryMutex = kotlinx.coroutines.sync.Mutex()
 
     /**
-     * Every failed statement, published once per execute call with the exact SQL that was sent
-     * and the verbatim driver/server message. Each ViewModel collects this and attaches the
-     * message to its own query-log line ([id.web.izs.sqlclient.ui.components.CurrentQueryBar]
-     * draws it red) — the message is never rewritten here or there.
+     * Every query-log event a ViewModel did not write itself: the statements this layer
+     * composes (the schema restore, the re-select after a 1046, a retried statement) and the
+     * failures that decorate a line a caller already logged. One flow instead of a failure
+     * flow plus a statement flow because each ViewModel collects exactly once — with two,
+     * the 1046 could be applied to the wrong line while the retry was being appended, since
+     * nothing orders one collector against another. The order between an error and the
+     * statements around it IS the log, so it is promised here by construction.
+     *
+     * [QueryStatement.append] adds the line for a statement this layer sent; `false` marks
+     * the line the caller already logged for that SQL (a failed first attempt has no line
+     * of its own). [QueryStatement.error] rides in the same event for an appended line, so
+     * it is complete the moment it appears — nothing left to decorate afterwards.
      */
-    private val _queryFailures = MutableSharedFlow<QueryFailure>(
+    private val _queryStatements = MutableSharedFlow<QueryStatement>(
         extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val queryFailures: SharedFlow<QueryFailure> = _queryFailures.asSharedFlow()
+    val queryStatements: SharedFlow<QueryStatement> = _queryStatements.asSharedFlow()
 
+    /**
+     * Marks the line the caller already logged for [sql] with the verbatim driver/server
+     * message ([CurrentQueryBar] draws it red). Published, never rewritten: the message
+     * reaching the log is exactly what the driver returned.
+     */
     private fun reportFailure(sql: String, result: QueryResult) {
-        if (result is QueryResult.Error) _queryFailures.tryEmit(QueryFailure(sql, result.message))
+        if (result is QueryResult.Error) {
+            _queryStatements.tryEmit(QueryStatement(sql, result.message, append = false))
+        }
     }
 
     /** Low-priority query that never blocks UI-critical queries: skips if mutex is busy. */
@@ -332,8 +371,13 @@ class MariaDbConnectionManager @Inject constructor(
         val first = executeQueryOnce(sql)
         if (first is QueryResult.Error && isNoDatabaseSelected(first.message)) {
             sessionDatabase?.let { db ->
-                if (executeQueryOnce("USE `$db`") !is QueryResult.Error) {
-                    return@withContext executeQueryOnce(sql)
+                // The server refused the statement BEFORE it ran, so there is nothing to
+                // undo — but there were two sends and a 1046. Publish them in the order the
+                // server saw them: the failed attempt, the re-select, then the retry, so
+                // the log never hides them behind one line that looks like a plain success.
+                reportFailure(sql, first)
+                if (executeLogged("USE `$db`", origin = sql) == null) {
+                    return@withContext executeRetried(sql)
                 }
             }
         }
@@ -341,9 +385,10 @@ class MariaDbConnectionManager @Inject constructor(
             val dead = isDeadConnectionError(first.message)
             if (first.message == "Cancelled" || dead) {
                 // cancel()/timeout drops the socket in driver 2.x — heal for the next query.
+                reportFailure(sql, first)
                 val healed = reconnectSilently()
                 if (dead && healed && !SqlUtil.isWriteQuery(sql)) {
-                    return@withContext executeQueryOnce(sql)
+                    return@withContext executeRetried(sql)
                 }
             }
         }
@@ -352,6 +397,18 @@ class MariaDbConnectionManager @Inject constructor(
         // A completed round trip proves the session was live — restart the staleness window.
         if (result !is QueryResult.Error) lastQueryAtMs = System.currentTimeMillis()
         reportFailure(sql, result)
+    }
+
+    /**
+     * Re-runs [sql] after a failed first attempt and appends the line for THIS attempt — the
+     * earlier one keeps its own marked line, so the log shows the statement sent twice, the
+     * way the server saw it. The outcome of this attempt reaches the log through the caller's
+     * `reportFailure`, exactly like a first-time statement.
+     */
+    private suspend fun executeRetried(sql: String): QueryResult {
+        val result = executeQueryOnce(sql)
+        _queryStatements.tryEmit(QueryStatement(sql, origin = sql))
+        return result
     }
 
     private suspend fun executeQueryOnce(sql: String): QueryResult = withContext(Dispatchers.IO) {
@@ -608,5 +665,3 @@ sealed class QueryResult {
     data class Error(val message: String) : QueryResult()
 }
 
-/** A failed statement: [message] is the verbatim driver/server error for exactly [sql]. */
-data class QueryFailure(val sql: String, val message: String)

@@ -14,7 +14,7 @@ import id.web.izs.sqlclient.data.repository.QueryRepository
 import id.web.izs.sqlclient.util.QueryLogEntry
 import id.web.izs.sqlclient.util.SqlUtil
 import id.web.izs.sqlclient.util.TableSql
-import id.web.izs.sqlclient.util.withQueryError
+import id.web.izs.sqlclient.util.withStatement
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,11 +104,13 @@ class BrowserViewModel @Inject constructor(
     }
 
     init {
-        // Failures come straight from the connection manager and are attached to the
-        // query-log line they belong to (CurrentQueryBar draws that line in red).
         viewModelScope.launch {
-            connectionManager.queryFailures.collect { failure ->
-                _currentQuery.value = _currentQuery.value.withQueryError(failure.sql, failure.message)
+            // One collector, one flow: a statement this layer composed gets its own line, a
+            // failure marks the line the caller already wrote. The order between them is the
+            // log (a 1046 before the re-select and the retry it caused), so it is the flow's
+            // to promise — two flows would leave two collectors nothing to order by.
+            connectionManager.queryStatements.collect { statement ->
+                _currentQuery.value = _currentQuery.value.withStatement(statement)
             }
         }
     }

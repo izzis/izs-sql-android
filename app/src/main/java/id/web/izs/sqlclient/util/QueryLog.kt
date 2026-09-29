@@ -49,6 +49,36 @@ fun List<QueryLogEntry>.withoutStaged(): List<QueryLogEntry> {
 }
 
 /**
+ * One query-log event: [sql] exactly as sent and [error] the verbatim driver/server message
+ * when it failed. [append] adds the line for a statement the connection layer sent; `false`
+ * marks the line a caller already logged for [sql] instead — a failed first attempt is
+ * reported against the line written before it went out, so it is never confused with a send.
+ *
+ * [origin] is the statement that provoked this one. Every screen keeps its own log (its own
+ * [id.web.izs.sqlclient.ui.components.CurrentQueryBar]), so an appended line is only kept by
+ * a log holding [origin]: a retry inside the data editor must not turn up in the browser's
+ * log, where nobody sent it. `null` means no statement provoked it — the schema restore when
+ * a connection opens — which is a session-wide event any log may show.
+ */
+data class QueryStatement(
+    val sql: String,
+    val error: String? = null,
+    val append: Boolean = true,
+    val origin: String? = null,
+)
+
+/**
+ * Copy of this log with [statement] applied: a failure marks the last line for its SQL (a
+ * no-op when this log never sent it — see [withQueryError]), an appended line is kept only
+ * when it belongs here, per [QueryStatement.origin].
+ */
+fun List<QueryLogEntry>.withStatement(statement: QueryStatement): List<QueryLogEntry> {
+    if (!statement.append) return withQueryError(statement.sql, statement.error.orEmpty())
+    if (statement.origin != null && none { it.sql == statement.origin }) return this
+    return this + QueryLogEntry(statement.sql, error = statement.error)
+}
+
+/**
  * The statement [sql] is about to be sent: an existing staged line for it flips to executed
  * in place (no duplicate after Save), and when nothing was staged for it the line is appended.
  * Call before `executeQuery` so "logged before send" still holds.
